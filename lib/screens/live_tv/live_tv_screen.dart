@@ -14,7 +14,7 @@ class LiveTvScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedCategory = ref.watch(tvCategoryProvider);
     final searchQuery = ref.watch(tvSearchQueryProvider);
-    final filteredChannels = ref.watch(filteredChannelsProvider);
+    final filteredChannelsAsync = ref.watch(filteredChannelsProvider);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -127,38 +127,60 @@ class LiveTvScreen extends ConsumerWidget {
               ),
             ),
 
-            // Channel count
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '${filteredChannels.length} chaîne${filteredChannels.length > 1 ? 's' : ''}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-
-            // Channel list
+            // Channel list (async)
             Expanded(
-              child: filteredChannels.isEmpty
-                  ? _EmptyChannels()
-                  : ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      itemCount: filteredChannels.length,
-                      itemBuilder: (context, i) => _ChannelListItem(
-                        channel: filteredChannels[i],
-                        onTap: () => Navigator.push(
+              child: filteredChannelsAsync.when(
+                loading: () => const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                      ),
+                      SizedBox(height: 16),
+                      Text('Chargement des chaînes...',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                error: (_, __) => _EmptyChannels(),
+                data: (filteredChannels) => Column(
+                  children: [
+                    // Channel count
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${filteredChannels.length} chaîne${filteredChannels.length != 1 ? 's' : ''}',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: filteredChannels.isEmpty
+                          ? _EmptyChannels()
+                          : ListView.builder(
+                              physics: const BouncingScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              itemCount: filteredChannels.length,
+                              itemBuilder: (context, i) => _ChannelListItem(
+                                channel: filteredChannels[i],
+                                onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) =>
                                 TvPlayerScreen(channel: filteredChannels[i]),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-            ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

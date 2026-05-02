@@ -20,11 +20,40 @@ class ApiConstants {
   static const String iptvChannelsUrl = '$iptvApiBaseUrl/channels.json';
   static const String iptvStreamsUrl = '$iptvApiBaseUrl/streams.json';
 
-  // French IPTV Playlist
+  // ---- M3U Playlists ----
+
+  // Master playlist (8000+ chaînes mondiales)
+  static const String masterM3uUrl =
+      'https://iptv-org.github.io/iptv/index.m3u';
+
+  // French IPTV Playlist (langue française uniquement)
   static const String frenchM3uUrl =
       'https://iptv-org.github.io/iptv/languages/fra.m3u';
 
-  // Sports IPTV Playlist
+  // Playlists par catégorie
   static const String sportsM3uUrl =
       'https://iptv-org.github.io/iptv/categories/sports.m3u';
+  static const String musicM3uUrl =
+      'https://iptv-org.github.io/iptv/categories/music.m3u';
+  static const String newsM3uUrl =
+      'https://iptv-org.github.io/iptv/categories/news.m3u';
+  static const String moviesM3uUrl =
+      'https://iptv-org.github.io/iptv/categories/movies.m3u';
+  static const String generalM3uUrl =
+      'https://iptv-org.github.io/iptv/categories/general.m3u';
+
+  // Playlists par pays (Afrique francophone)
+  static const String congoM3uUrl =
+      'https://iptv-org.github.io/iptv/countries/cd.m3u';
+  static const String franceM3uUrl =
+      'https://iptv-org.github.io/iptv/countries/fr.m3u';
+  static const String camerounM3uUrl =
+      'https://iptv-org.github.io/iptv/countries/cm.m3u';
+  static const String senegalM3uUrl =
+      'https://iptv-org.github.io/iptv/countries/sn.m3u';
+  static const String coteIvoireM3uUrl =
+      'https://iptv-org.github.io/iptv/countries/ci.m3u';
+
+  // Playlist abonné (à renseigner)
+  static const String subscribedM3uUrl = ''; // ← coller l'URL ici
 }
