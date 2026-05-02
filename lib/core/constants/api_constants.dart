@@ -13,7 +13,7 @@ class ApiConstants {
 
   // RAWG Games Database
   static const String rawgBaseUrl = 'https://api.rawg.io/api';
-  static const String rawgApiKey = 'YOUR_RAWG_API_KEY'; // Get at rawg.io/apidocs
+  static const String rawgApiKey = 'f83ee17c0a4e46f1803e55aca75a0881';
 
   // IPTV-org API
   static const String iptvApiBaseUrl = 'https://iptv-org.github.io/api';
