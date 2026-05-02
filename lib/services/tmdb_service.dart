@@ -10,6 +10,7 @@ class TmdbService {
 
   static final Map<String, String> _headers = {
     'Accept': 'application/json',
+    'Authorization': 'Bearer ${ApiConstants.tmdbReadAccessToken}',
   };
 
   String _buildUrl(String path, [Map<String, String>? extraParams]) {

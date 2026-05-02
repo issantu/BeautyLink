@@ -1,8 +1,9 @@
 class ApiConstants {
   // TMDb - The Movie Database
   static const String tmdbBaseUrl = 'https://api.themoviedb.org/3';
+  static const String tmdbReadAccessToken = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjZGE1Zjc2YjE3OGZiNzU5Njg1ZDA0ZGI0MDU2NjEzMyIsIm5iZiI6MTc3NzUxNTYzOC4zNywic3ViIjoiNjlmMmJjNzY0NmUyZWVhOWQxYjgyODJiIiwic2NvcGVzIjpbImFwaV9yZWFkIl0sInZlcnNpb24iOjF9.LASIsH5NPk7N6TWJNkIffrazzuLcRhLK4e0_gmF5PgI';
   static const String tmdbImageBaseUrl = 'https://image.tmdb.org/t/p';
-  static const String tmdbApiKey = 'YOUR_TMDB_API_KEY'; // Get at developer.themoviedb.org
+  static const String tmdbApiKey = 'cda5f76b178fb759685d04db40566133';
   static const String tmdbLanguage = 'fr-FR';
 
   // TMDb Image Sizes
