@@ -112,7 +112,7 @@ class _CastSheetState extends State<_CastSheet> {
   }
 
   Future<void> _stopCasting() async {
-    await widget.castService.stopCast();
+    widget.castService.stopCast();
     await widget.castService.disconnect();
     if (mounted) Navigator.pop(context);
   }

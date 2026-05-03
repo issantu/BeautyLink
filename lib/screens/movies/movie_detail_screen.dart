@@ -4,7 +4,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../models/movie.dart';
-import '../../widgets/movie_card.dart';
 import '../payment/payment_screen.dart';
 
 class MovieDetailScreen extends ConsumerWidget {

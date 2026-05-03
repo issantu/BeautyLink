@@ -21,6 +21,11 @@
         android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true">
 
+        <!-- Required: declare Flutter v2 embedding -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -40,15 +45,6 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-
-        <!-- Chromecast metadata -->
-        <meta-data
-            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-            android:value="com.omniflix.app.CastOptionsProvider"/>
-
-        <meta-data
-            android:name="io.flutter.embedding.android.SplashScreenDrawable"
-            android:resource="@drawable/launch_background"/>
 
     </application>
 </manifest>

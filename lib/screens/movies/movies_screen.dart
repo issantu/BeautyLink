@@ -5,7 +5,6 @@ import '../../models/movie.dart';
 import '../../providers/movies_provider.dart';
 import '../../widgets/movie_card.dart';
 import '../../widgets/section_header.dart';
-import 'movie_detail_screen.dart';
 
 class MoviesScreen extends ConsumerWidget {
   const MoviesScreen({super.key});

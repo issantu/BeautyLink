@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../core/theme/app_theme.dart';
 import '../core/constants/app_constants.dart';
 import '../models/movie.dart';
@@ -15,8 +14,6 @@ import '../widgets/channel_card.dart';
 import '../widgets/event_card.dart';
 import '../widgets/featured_carousel.dart';
 import 'payment/payment_screen.dart';
-import 'live_tv/tv_player_screen.dart';
-import 'movies/movie_detail_screen.dart';
 import 'events/events_screen.dart' show EventDetailPage;
 import 'main_nav_screen.dart';
 

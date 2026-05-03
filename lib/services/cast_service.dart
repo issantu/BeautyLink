@@ -1,17 +1,14 @@
-import 'dart:async';
 import 'package:cast/cast.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final castServiceProvider = Provider<CastService>((_) => CastService());
 
-/// Wraps the `cast` package (Google Cast SDK) for streaming media URLs
+/// Wraps the `cast` package (Google Cast SDK v2) for streaming media URLs
 /// to Chromecast / Google TV devices on the local network.
 ///
-/// Uses the "Default Media Receiver" (App ID: CC1AD845) — no developer
-/// registration required, supports MP4, HLS, DASH, and WebM.
+/// Uses the "Default Media Receiver" (App ID: CC1AD845) — supports
+/// HLS, MP4, DASH, WebM without developer registration.
 class CastService {
-  static const _defaultReceiverAppId = 'CC1AD845';
-
   CastSession? _session;
   List<CastDevice> _devices = [];
   bool _isDiscovering = false;
@@ -22,17 +19,14 @@ class CastService {
 
   // ── Discovery ───────────────────────────────────────────────────────────────
 
-  /// Scans for Cast devices on the local network for [duration].
   Future<List<CastDevice>> discoverDevices({
     Duration duration = const Duration(seconds: 4),
   }) async {
     if (_isDiscovering) return _devices;
     _isDiscovering = true;
     _devices = [];
-
     try {
-      final service = CastDiscoveryService();
-      _devices = await service.start(timeout: duration);
+      _devices = await CastDiscoveryService().search(timeout: duration);
     } catch (_) {
       _devices = [];
     } finally {
@@ -46,6 +40,8 @@ class CastService {
   Future<bool> connectTo(CastDevice device) async {
     try {
       _session = await CastSessionManager().startSession(device);
+      // Wait briefly for connection to establish
+      await Future.delayed(const Duration(milliseconds: 800));
       return _session?.state == CastSessionState.connected;
     } catch (_) {
       return false;
@@ -53,14 +49,14 @@ class CastService {
   }
 
   Future<void> disconnect() async {
-    await _session?.close();
-    _session = null;
+    if (_session != null) {
+      await CastSessionManager().endSession(_session!.sessionId);
+      _session = null;
+    }
   }
 
   // ── Media ───────────────────────────────────────────────────────────────────
 
-  /// Sends a media URL to the connected Cast device.
-  /// [contentType] examples: 'video/mp4', 'application/x-mpegURL' (HLS)
   Future<bool> castMedia({
     required String url,
     required String title,
@@ -68,9 +64,8 @@ class CastService {
     String? imageUrl,
   }) async {
     if (_session == null || !isConnected) return false;
-
     try {
-      final message = {
+      _session!.sendMessage(CastSession.kNamespaceMedia, {
         'type': 'LOAD',
         'autoplay': true,
         'currentTime': 0,
@@ -82,29 +77,24 @@ class CastService {
             'type': 0,
             'metadataType': 0,
             'title': title,
-            if (imageUrl != null)
-              'images': [{'url': imageUrl}],
+            if (imageUrl != null) 'images': [{'url': imageUrl}],
           },
         },
-      };
-      _session!.sendMessage(CastSession.kNamespaceMedia, message);
+      });
       return true;
     } catch (_) {
       return false;
     }
   }
 
-  Future<void> pauseCast() async {
-    _session?.sendMessage(CastSession.kNamespaceMedia, {'type': 'PAUSE'});
-  }
+  void pauseCast() =>
+      _session?.sendMessage(CastSession.kNamespaceMedia, {'type': 'PAUSE'});
 
-  Future<void> resumeCast() async {
-    _session?.sendMessage(CastSession.kNamespaceMedia, {'type': 'PLAY'});
-  }
+  void resumeCast() =>
+      _session?.sendMessage(CastSession.kNamespaceMedia, {'type': 'PLAY'});
 
-  Future<void> stopCast() async {
-    _session?.sendMessage(CastSession.kNamespaceMedia, {'type': 'STOP'});
-  }
+  void stopCast() =>
+      _session?.sendMessage(CastSession.kNamespaceMedia, {'type': 'STOP'});
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 

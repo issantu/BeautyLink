@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/event.dart';
+import '../models/subscription.dart';
 import '../services/payment_service.dart';
 
 final paymentServiceProvider = Provider<PaymentService>((ref) => PaymentService());

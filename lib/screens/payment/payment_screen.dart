@@ -73,6 +73,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     _isPending = false;
   }
 
+  // Public rebuild helper — avoids calling the protected setState from sub-widgets.
+  // ignore: use_setters_to_change_properties
+  void update(VoidCallback fn) => setState(fn);
+
   // ── DRC payment flow ────────────────────────────────────────────────────────
 
   Future<void> _processMobileMoney() async {
@@ -268,7 +272,7 @@ class _DrcTab extends StatelessWidget {
           if (!parent._isPpv) ...[
             _PlanSelector(
               selectedIndex: parent._selectedPlanIndex,
-              onSelect: (i) => parent.setState(() => parent._selectedPlanIndex = i),
+              onSelect: (i) => parent.update(() => parent._selectedPlanIndex = i),
               region: PaymentRegion.drc,
             ),
             const SizedBox(height: 20),
@@ -287,25 +291,25 @@ class _DrcTab extends StatelessWidget {
             color: const Color(0xFF00A651),
             subtitle: 'Compte marchand OmniFlix',
             selected: parent._selectedMethod == PaymentMethod.mpesa,
-            onTap: () => parent.setState(() => parent._selectedMethod = PaymentMethod.mpesa),
+            onTap: () => parent.update(() => parent._selectedMethod = PaymentMethod.mpesa),
           ),
           _MobileMoneyCard(
             id: 'airtel', name: 'Airtel Money', emoji: '🔴',
             color: const Color(0xFFE60000),
             selected: parent._selectedMethod == PaymentMethod.airtel,
-            onTap: () => parent.setState(() => parent._selectedMethod = PaymentMethod.airtel),
+            onTap: () => parent.update(() => parent._selectedMethod = PaymentMethod.airtel),
           ),
           _MobileMoneyCard(
             id: 'orange', name: 'Orange Money', emoji: '🟠',
             color: const Color(0xFFFF6600),
             selected: parent._selectedMethod == PaymentMethod.orange,
-            onTap: () => parent.setState(() => parent._selectedMethod = PaymentMethod.orange),
+            onTap: () => parent.update(() => parent._selectedMethod = PaymentMethod.orange),
           ),
           _MobileMoneyCard(
             id: 'africell', name: 'Africell Money', emoji: '🔵',
             color: const Color(0xFF0066CC),
             selected: parent._selectedMethod == PaymentMethod.africell,
-            onTap: () => parent.setState(() => parent._selectedMethod = PaymentMethod.africell),
+            onTap: () => parent.update(() => parent._selectedMethod = PaymentMethod.africell),
           ),
 
           const SizedBox(height: 16),
@@ -397,7 +401,7 @@ class _IntlTab extends StatelessWidget {
           if (!parent._isPpv) ...[
             _PlanSelector(
               selectedIndex: parent._selectedPlanIndex,
-              onSelect: (i) => parent.setState(() => parent._selectedPlanIndex = i),
+              onSelect: (i) => parent.update(() => parent._selectedPlanIndex = i),
               region: PaymentRegion.international,
             ),
             const SizedBox(height: 20),
@@ -531,7 +535,7 @@ class _IntlTab extends StatelessWidget {
               color: const Color(0xFF009CDE),
               isLoading: parent._isLoading,
               onPressed: () {
-                parent.setState(() => parent._selectedMethod = PaymentMethod.paypal);
+                parent.update(() => parent._selectedMethod = PaymentMethod.paypal);
                 parent._openPayPal();
               },
             ),

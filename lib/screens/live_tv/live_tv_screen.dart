@@ -168,16 +168,16 @@ class LiveTvScreen extends ConsumerWidget {
                               itemBuilder: (context, i) => _ChannelListItem(
                                 channel: filteredChannels[i],
                                 onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                TvPlayerScreen(channel: filteredChannels[i]),
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => TvPlayerScreen(
+                                        channel: filteredChannels[i]),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ),
