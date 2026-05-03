@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/app_theme.dart';
 import '../core/constants/app_constants.dart';
+import '../widgets/app_logo.dart';
 import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -145,7 +146,7 @@ class _SplashScreenState extends State<SplashScreen>
                         child: child,
                       ),
                     ),
-                    child: _buildLogo(),
+                    child: const AppLogo(size: AppLogoSize.xlarge),
                   ),
 
                   const SizedBox(height: 24),
@@ -230,32 +231,4 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
-  Widget _buildLogo() {
-    return Container(
-      width: 100,
-      height: 100,
-      decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.4),
-            blurRadius: 30,
-            spreadRadius: 5,
-          ),
-        ],
-      ),
-      child: const Center(
-        child: Text(
-          'OF',
-          style: TextStyle(
-            fontSize: 40,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            letterSpacing: -2,
-          ),
-        ),
-      ),
-    );
-  }
 }

@@ -2,11 +2,29 @@ class AppConstants {
   static const String appName = 'OmniFlix';
   static const String appTagline = 'Films • TV Direct • Jeux Vidéo';
 
-  // Pricing in Franc Congolais (FC)
+  // ── Pricing RDC (Franc Congolais) ─────────────────────────────────────────
   static const int dailyPriceFc = 3000;
   static const int monthlyPriceFc = 46000;
   static const String currency = 'FC';
   static const String currencyName = 'Franc Congolais';
+
+  // ── Pricing International (USD / EUR) ─────────────────────────────────────
+  static const double dailyPriceUsd = 1.99;
+  static const double monthlyPriceUsd = 14.99;
+  static const double dailyPriceEur = 1.89;
+  static const double monthlyPriceEur = 13.99;
+
+  // ── M-Pesa RDC — compte marchand dédié OmniFlix ───────────────────────────
+  // Numéro Vodacom DRC : +243-839495208
+  static const String mpesaMerchantNumber = '839495208';
+  static const String mpesaMerchantFull   = '+243839495208';
+  // Code USSD Vodacom DRC pour paiement marchand : *150*1*[montant]*[marchand]#
+  static const String mpesaUssdTemplate   = '*150*1*{amount}*839495208#';
+
+  // ── PayPal — international ─────────────────────────────────────────────────
+  // Remplacer par le lien PayPal.me réel après création du compte PayPal Business
+  static const String paypalMeLink        = 'https://www.paypal.me/omniflixapp';
+  static const String paypalBusinessEmail = 'payments@omniflix.app'; // placeholder
 
   // Savings percentage
   static const double monthlySavings = 0.49; // ~49% cheaper vs daily

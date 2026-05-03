@@ -1,6 +1,8 @@
 enum SubscriptionType { none, daily, monthly }
 
-enum PaymentMethod { airtel, mpesa, orange, africell }
+enum PaymentMethod { airtel, mpesa, orange, africell, paypal }
+
+enum PaymentRegion { drc, international }
 
 class Subscription {
   final SubscriptionType type;
@@ -63,14 +65,11 @@ class PaymentTransaction {
 
   String get methodName {
     switch (method) {
-      case PaymentMethod.airtel:
-        return 'Airtel Money';
-      case PaymentMethod.mpesa:
-        return 'M-Pesa';
-      case PaymentMethod.orange:
-        return 'Orange Money';
-      case PaymentMethod.africell:
-        return 'Africell Money';
+      case PaymentMethod.airtel:    return 'Airtel Money';
+      case PaymentMethod.mpesa:     return 'M-Pesa';
+      case PaymentMethod.orange:    return 'Orange Money';
+      case PaymentMethod.africell:  return 'Africell Money';
+      case PaymentMethod.paypal:    return 'PayPal';
     }
   }
 }
