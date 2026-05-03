@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme/app_theme.dart';
 import 'home_screen.dart';
-import 'live_tv/live_tv_screen.dart';
+import 'live_tv/vavoo_screen.dart';
 import 'movies/movies_screen.dart';
 import 'games/games_screen.dart';
 import 'events/events_screen.dart';
@@ -18,7 +18,7 @@ class MainNavScreen extends ConsumerWidget {
 
     final screens = [
       const HomeScreen(),
-      const LiveTvScreen(),
+      const VavooScreen(),
       const MoviesScreen(),
       const GamesScreen(),
       const EventsScreen(),

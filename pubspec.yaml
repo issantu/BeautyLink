@@ -53,8 +53,11 @@ dependencies:
   cupertino_icons: ^1.0.6
   flutter_icons: ^1.1.0
 
-  # Casting (Chromecast)
-  flutter_cast_framework: ^0.8.2
+  # WebView (pour vavoo.to)
+  flutter_inappwebview: ^6.0.0
+
+  # VPN
+  openvpn_flutter: ^1.3.3
 
   # Analytics
   firebase_core: ^2.27.0
