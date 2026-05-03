@@ -92,6 +92,9 @@ class _VavooScreenState extends ConsumerState<VavooScreen> {
               onSearch: (q) => _search(q),
             ),
 
+            // VPN reminder banner (shown when VPN is off)
+            if (!vpnActive) _VpnReminderBanner(onTap: () => _toggleVpn(context)),
+
             // WebView
             Expanded(
               child: Stack(
@@ -577,6 +580,60 @@ class _VpnOptionsSheet extends StatelessWidget {
           ),
           const SizedBox(height: 10),
         ],
+      ),
+    );
+  }
+}
+
+class _VpnReminderBanner extends StatelessWidget {
+  final VoidCallback onTap;
+  const _VpnReminderBanner({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.gold.withOpacity(0.12),
+          border: Border(
+            bottom: BorderSide(color: AppColors.gold.withOpacity(0.3)),
+          ),
+        ),
+        child: Row(
+          children: [
+            const Text('⚠️', style: TextStyle(fontSize: 13)),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Activez Lokke VPN pour débloquer toutes les chaînes',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.gold,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.gold.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.gold.withOpacity(0.5)),
+              ),
+              child: const Text(
+                'Activer',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.gold,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
