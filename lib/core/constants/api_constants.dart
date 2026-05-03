@@ -54,6 +54,7 @@ class ApiConstants {
   static const String coteIvoireM3uUrl =
       'https://iptv-org.github.io/iptv/countries/ci.m3u';
 
-  // Playlist abonné (à renseigner)
-  static const String subscribedM3uUrl = ''; // ← coller l'URL ici
+  // Playlist abonné (priorité maximale)
+  static const String subscribedM3uUrl =
+      'http://amorym.cc/get.php?username=84862wxx0205&password=dyJGST1&type=m3u_plus&output=ts';
 }

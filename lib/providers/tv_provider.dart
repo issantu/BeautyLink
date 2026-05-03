@@ -10,38 +10,40 @@ final tvCategoryProvider = StateProvider<String>((ref) => 'all');
 // TV search query
 final tvSearchQueryProvider = StateProvider<String>((ref) => '');
 
-// Dynamic channels loaded from M3U playlists (async)
-final dynamicChannelsProvider =
-    FutureProvider.family<List<TvChannel>, String>((ref, category) async {
+// Load ALL channels from subscribed playlist ONCE and cache them
+// This runs only once when the TV tab is first opened
+final allSubscribedChannelsProvider = FutureProvider<List<TvChannel>>((ref) async {
   final service = ref.watch(iptvServiceProvider);
-  final channels = await service.getAllChannels(category: category);
-  if (channels.isEmpty) return service.getCuratedChannels(category);
+  final channels = await service.getAllChannels(category: 'all');
   return channels;
 });
 
-// Channels for current selected category
+// Filter cached channels by selected category (instant, no extra network call)
 final channelsProvider = FutureProvider<List<TvChannel>>((ref) async {
   final category = ref.watch(tvCategoryProvider);
-  final service = ref.watch(iptvServiceProvider);
-  final channels = await service.getAllChannels(category: category);
-  if (channels.isEmpty) return service.getCuratedChannels(category);
-  return channels;
+  final allAsync = await ref.watch(allSubscribedChannelsProvider.future);
+
+  if (category == 'all') return allAsync;
+
+  final filtered = allAsync.where((c) => c.category == category).toList();
+  return filtered.isNotEmpty ? filtered : allAsync;
 });
 
-// Filtered channels based on search + category
+// Filtered by search query on top of category filter
 final filteredChannelsProvider = FutureProvider<List<TvChannel>>((ref) async {
   final query = ref.watch(tvSearchQueryProvider);
   final channels = await ref.watch(channelsProvider.future);
+
   if (query.isEmpty) return channels;
   return channels
       .where((ch) => ch.name.toLowerCase().contains(query.toLowerCase()))
       .toList();
 });
 
-// Currently selected/playing channel
+// Currently playing channel
 final selectedChannelProvider = StateProvider<TvChannel?>((ref) => null);
 
-// Featured channels for home screen (curated, instant — no loading)
+// Featured channels for home screen (instant — curated, no loading)
 final featuredChannelsProvider = Provider<List<TvChannel>>((ref) {
   final all = CuratedChannels.allChannels;
   final sports = all.where((c) => c.category == 'sports').take(4).toList();

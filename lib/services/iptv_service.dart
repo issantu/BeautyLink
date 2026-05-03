@@ -80,30 +80,24 @@ class IptvService {
     return loadFromM3u(ApiConstants.subscribedM3uUrl);
   }
 
-  // Get merged channel list: subscribed first, then curated, then dynamic
+  // Get channels: subscribed playlist is the ONLY source (fast).
+  // Falls back to curated list only if subscribed fails.
   Future<List<TvChannel>> getAllChannels({String category = 'all'}) async {
+    // 1. Try subscribed playlist first (stable, VPN-enabled)
     final subscribed = await loadSubscribed();
 
-    if (category == 'all') {
-      if (subscribed.isNotEmpty) return subscribed;
-      // Fall back to curated list
-      return CuratedChannels.allChannels;
+    if (subscribed.isNotEmpty) {
+      if (category == 'all') return subscribed;
+      // Filter by category
+      final filtered = subscribed
+          .where((c) => c.category == category)
+          .toList();
+      // If no match in category, return all subscribed channels
+      return filtered.isNotEmpty ? filtered : subscribed;
     }
 
-    final dynamic = await loadByCategory(category);
-    final curated = CuratedChannels.allChannels
-        .where((c) => c.category == category)
-        .toList();
-
-    // Merge: subscribed > dynamic > curated (deduplicated)
-    final seen = <String>{};
-    final merged = <TvChannel>[];
-    for (final ch in [...subscribed, ...dynamic, ...curated]) {
-      if (ch.category == category || category == 'all') {
-        if (seen.add(ch.name.toLowerCase())) merged.add(ch);
-      }
-    }
-    return merged;
+    // 2. Fallback: curated list (instant, no network needed)
+    return getCuratedChannels(category);
   }
 
   // Get curated channels immediately (no async, for home screen)
