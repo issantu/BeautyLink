@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../core/theme/app_theme.dart';
 import '../models/game.dart';
+import '../screens/games/roms_fun_screen.dart';
 
 class GameCard extends StatelessWidget {
   final Game game;
@@ -27,7 +28,6 @@ class GameCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Cover image
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
             child: CachedNetworkImage(
@@ -63,21 +63,14 @@ class GameCard extends StatelessWidget {
                   ),
                   Row(
                     children: [
-                      const Icon(Icons.star_rounded,
-                          size: 11, color: AppColors.gold),
+                      const Icon(Icons.star_rounded, size: 11, color: AppColors.gold),
                       const SizedBox(width: 2),
-                      Text(
-                        game.ratingDisplay,
-                        style: const TextStyle(
-                            fontSize: 10, color: AppColors.textMuted),
-                      ),
+                      Text(game.ratingDisplay,
+                          style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
                       const Spacer(),
                       if (game.year.isNotEmpty)
-                        Text(
-                          game.year,
-                          style: const TextStyle(
-                              fontSize: 9, color: AppColors.textMuted),
-                        ),
+                        Text(game.year,
+                            style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
                     ],
                   ),
                 ],
@@ -98,7 +91,6 @@ class GameCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // Cover
           ClipRRect(
             borderRadius: BorderRadius.circular(13),
             child: CachedNetworkImage(
@@ -114,7 +106,6 @@ class GameCard extends StatelessWidget {
               ),
             ),
           ),
-          // Gradient
           ClipRRect(
             borderRadius: BorderRadius.circular(13),
             child: const DecoratedBox(
@@ -122,7 +113,6 @@ class GameCard extends StatelessWidget {
               child: SizedBox.expand(),
             ),
           ),
-          // Info
           Positioned(
             bottom: 8,
             left: 8,
@@ -133,23 +123,16 @@ class GameCard extends StatelessWidget {
                 Text(
                   game.name,
                   style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
+                      fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.star_rounded,
-                        size: 10, color: AppColors.gold),
+                    const Icon(Icons.star_rounded, size: 10, color: AppColors.gold),
                     const SizedBox(width: 2),
-                    Text(
-                      game.ratingDisplay,
-                      style: const TextStyle(
-                          fontSize: 9, color: Colors.white70),
-                    ),
+                    Text(game.ratingDisplay,
+                        style: const TextStyle(fontSize: 9, color: Colors.white70)),
                   ],
                 ),
               ],
@@ -177,157 +160,201 @@ class _GameDetailSheet extends StatelessWidget {
   final Game game;
   const _GameDetailSheet({required this.game});
 
+  void _openRomsFun(BuildContext context) {
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RomsFunScreen(gameName: game.name),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.7,
+      initialChildSize: 0.75,
       maxChildSize: 0.95,
       minChildSize: 0.5,
       expand: false,
       builder: (_, controller) => SingleChildScrollView(
         controller: controller,
-        child: Padding(
-          padding: const EdgeInsets.all(0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Cover image
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                child: CachedNetworkImage(
-                  imageUrl: game.coverImage,
-                  width: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Cover
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              child: CachedNetworkImage(
+                imageUrl: game.coverImage,
+                width: double.infinity,
+                height: 200,
+                fit: BoxFit.cover,
+                placeholder: (_, __) =>
+                    Container(height: 200, color: AppColors.bgCardLight),
+                errorWidget: (_, __, ___) => Container(
                   height: 200,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) =>
-                      Container(height: 200, color: AppColors.bgCardLight),
-                  errorWidget: (_, __, ___) => Container(
-                    height: 200,
-                    color: AppColors.bgCardLight,
-                    child: const Icon(Icons.sports_esports_rounded,
-                        size: 64, color: AppColors.textMuted),
-                  ),
+                  color: AppColors.bgCardLight,
+                  child: const Icon(Icons.sports_esports_rounded,
+                      size: 64, color: AppColors.textMuted),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handle
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppColors.bgCardLight,
-                          borderRadius: BorderRadius.circular(2),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Handle
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.bgCardLight,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  Text(
+                    game.name,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Rating + year
+                  Row(
+                    children: [
+                      const Icon(Icons.star_rounded, color: AppColors.gold, size: 16),
+                      const SizedBox(width: 4),
+                      Text(game.ratingDisplay,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                      if (game.year.isNotEmpty) ...[
+                        const SizedBox(width: 10),
+                        Text(game.year,
+                            style: const TextStyle(
+                                fontSize: 13, color: AppColors.textSecondary)),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Platforms
+                  if (game.platforms.isNotEmpty) ...[
+                    Text(
+                      game.platformsDisplay,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // Genres
+                  if (game.genres.isNotEmpty)
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: game.genres
+                          .map((g) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(g,
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w500)),
+                              ))
+                          .toList(),
+                    ),
+
+                  if (game.description != null) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Description',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      game.description!.length > 400
+                          ? '${game.description!.substring(0, 400)}...'
+                          : game.description!,
+                      style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                          height: 1.6),
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+
+                  // ── ROM download button ──────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _openRomsFun(context),
+                      icon: const Icon(Icons.download_rounded, size: 20),
+                      label: const Text(
+                        'Télécharger la ROM',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                  ),
 
-                    Text(
-                      game.name,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
+                  const SizedBox(height: 10),
+
+                  // ── Info note ────────────────────────────────────────
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgCardLight.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const SizedBox(height: 8),
-
-                    // Rating + year
-                    Row(
-                      children: [
-                        const Icon(Icons.star_rounded,
-                            color: AppColors.gold, size: 16),
-                        const SizedBox(width: 4),
-                        Text(game.ratingDisplay,
-                            style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary)),
-                        if (game.year.isNotEmpty) ...[
-                          const SizedBox(width: 10),
-                          Text(game.year,
-                              style: const TextStyle(
-                                  fontSize: 13, color: AppColors.textSecondary)),
-                        ],
+                    child: Row(
+                      children: const [
+                        Icon(Icons.info_outline_rounded,
+                            size: 14, color: AppColors.textMuted),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Un émulateur est nécessaire pour jouer. '
+                            'RetroArch est recommandé.',
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.textMuted, height: 1.4),
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                  ),
 
-                    // Platforms
-                    if (game.platforms.isNotEmpty) ...[
-                      Text(
-                        game.platformsDisplay,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-
-                    // Genres
-                    if (game.genres.isNotEmpty)
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: game.genres
-                            .map((g) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(g,
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w500)),
-                                ))
-                            .toList(),
-                      ),
-
-                    if (game.description != null) ...[
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Description',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        game.description!.length > 400
-                            ? '${game.description!.substring(0, 400)}...'
-                            : game.description!,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
-                            height: 1.6),
-                      ),
-                    ],
-
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.sports_esports_rounded, size: 20),
-                        label: const Text('Trouver le jeu',
-                            style: TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                  ],
-                ),
+                  const SizedBox(height: 6),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
