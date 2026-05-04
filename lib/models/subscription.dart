@@ -1,6 +1,6 @@
 enum SubscriptionType { none, daily, monthly }
 
-enum PaymentMethod { airtel, mpesa, orange, africell, paypal }
+enum PaymentMethod { airtel, mpesa, orange, africell, stripe }
 
 enum PaymentRegion { drc, international }
 
@@ -69,7 +69,7 @@ class PaymentTransaction {
       case PaymentMethod.mpesa:     return 'M-Pesa';
       case PaymentMethod.orange:    return 'Orange Money';
       case PaymentMethod.africell:  return 'Africell Money';
-      case PaymentMethod.paypal:    return 'PayPal';
+      case PaymentMethod.stripe:    return 'Stripe';
     }
   }
 }

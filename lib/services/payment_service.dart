@@ -1,28 +1,32 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/subscription.dart';
 import '../core/constants/app_constants.dart';
+import '../core/constants/api_constants.dart';
 
 final paymentServiceProvider = Provider<PaymentService>((_) => PaymentService());
 
 class PaymentService {
   static const String _subscriptionKey = 'omniflix_subscription_type';
   static const String _expiryKey       = 'omniflix_expiry_date';
+  static const String _pendingSessionKey = 'omniflix_pending_stripe_session';
+  static const String _pendingKindKey    = 'omniflix_pending_stripe_kind';
+  static const String _pendingPlanKey    = 'omniflix_pending_stripe_plan';
+  static const String _pendingEventKey   = 'omniflix_pending_stripe_event';
 
   // ── Region helpers ──────────────────────────────────────────────────────────
 
   /// Derives FC equivalent of a USD price at the current indicative rate.
   static int usdToFc(double usd) => (usd * 2850).round();
 
-  String formatUsd(double amount) =>
-      '\$${amount.toStringAsFixed(2)}';
+  String formatUsd(double amount) => '\$${amount.toStringAsFixed(2)}';
+  String formatEur(double amount) => '€${amount.toStringAsFixed(2)}';
 
-  String formatEur(double amount) =>
-      '€${amount.toStringAsFixed(2)}';
-
-  // ── Subscription management ────────────────────────────────────────────────
+  // ── Subscription management (local, shared_preferences) ───────────────────
 
   Future<Subscription> getCurrentSubscription() async {
     final prefs = await SharedPreferences.getInstance();
@@ -61,20 +65,19 @@ class PaymentService {
     await prefs.setString(_expiryKey, expiry.toIso8601String());
   }
 
-  // ── M-Pesa DRC (Vodacom) ───────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RDC — Mobile Money (paiement en Franc Congolais via composeur USSD)
+  // Flux 100 % client, pas de backend. Inchangé.
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Builds the USSD code that the customer dials to pay the OmniFlix
-  /// M-Pesa merchant account (+243-839495208).
-  /// Vodacom DRC format: *150*1*[montant]*[marchand]#
+  /// Vodacom DRC USSD : *150*1*[montant]*[marchand]#
   String getMpesaUssdCode(int amountFc) {
     return AppConstants.mpesaUssdTemplate
         .replaceFirst('{amount}', amountFc.toString());
   }
 
-  /// Opens the phone dialer pre-filled with the USSD code.
   Future<bool> dialMpesaUssd(int amountFc) async {
     final code = getMpesaUssdCode(amountFc);
-    // Encode '#' as %23 for tel: URIs
     final encoded = code.replaceAll('#', '%23');
     final uri = Uri.parse('tel:$encoded');
     if (await canLaunchUrl(uri)) {
@@ -83,8 +86,6 @@ class PaymentService {
     }
     return false;
   }
-
-  // ── Airtel / Orange / Africell ────────────────────────────────────────────
 
   String getUssdCode(PaymentMethod method, int amountFc) {
     final merchant = AppConstants.mpesaMerchantNumber;
@@ -97,7 +98,7 @@ class PaymentService {
         return '#144*1*$merchant*$amountFc#';
       case PaymentMethod.africell:
         return '*210*2*$merchant*$amountFc#';
-      case PaymentMethod.paypal:
+      case PaymentMethod.stripe:
         return '';
     }
   }
@@ -114,21 +115,6 @@ class PaymentService {
     return false;
   }
 
-  // ── PayPal (International) ────────────────────────────────────────────────
-
-  /// Opens the PayPal.me page with the amount pre-filled (USD).
-  Future<bool> openPayPal({required double amountUsd}) async {
-    final amount = amountUsd.toStringAsFixed(2);
-    final url = Uri.parse('${AppConstants.paypalMeLink}/$amount');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-      return true;
-    }
-    return false;
-  }
-
-  // ── Payment initiation (Mobile Money — DRC) ────────────────────────────────
-
   Future<PaymentResult> initiatePayment({
     required PaymentMethod method,
     required SubscriptionType plan,
@@ -137,13 +123,7 @@ class PaymentService {
     final amountFc = plan == SubscriptionType.daily
         ? AppConstants.dailyPriceFc
         : AppConstants.monthlyPriceFc;
-
-    // Trigger USSD on device
     await dialUssd(method, amountFc);
-
-    // Payment confirmation is manual: user dials and confirms on their phone.
-    // We return a "pending" state — the PaymentScreen will show instructions
-    // and a "Confirmer le paiement" button that activates the subscription.
     return PaymentResult(
       isSuccess: false,
       isPending: true,
@@ -154,7 +134,6 @@ class PaymentService {
     );
   }
 
-  /// Called when the user confirms they have completed the mobile money payment.
   Future<PaymentResult> confirmMobileMoneyPayment({
     required SubscriptionType plan,
     required int amountFc,
@@ -170,20 +149,163 @@ class PaymentService {
     );
   }
 
-  /// Called after the user returns from PayPal checkout.
-  Future<PaymentResult> confirmPayPalPayment({
+  // ═══════════════════════════════════════════════════════════════════════════
+  // International — Stripe Checkout (carte bancaire, USD)
+  // Passe par le backend OmniFlix qui crée la session Stripe.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Uri get _backendUri => Uri.parse(ApiConstants.backendBaseUrl);
+
+  /// Demande au backend de créer une Checkout Session pour l'abonnement.
+  /// Retourne l'URL Stripe à ouvrir dans le navigateur externe et le session_id.
+  Future<StripeCheckout?> createStripeCheckout({
     required SubscriptionType plan,
-    required double amountUsd,
   }) async {
-    await _activateSubscription(plan);
-    final code = 'PP${DateTime.now().millisecondsSinceEpoch}';
+    final packageId = plan == SubscriptionType.daily ? 'daily_sub' : 'monthly_sub';
+    return _createCheckout(body: {
+      'package_id': packageId,
+      'origin_url': ApiConstants.backendBaseUrl,
+    }, pending: {
+      'kind': 'subscription',
+      'plan': plan.name,
+    });
+  }
+
+  /// Demande au backend de créer une Checkout Session pour un événement PPV.
+  Future<StripeCheckout?> createStripePpvCheckout({required String eventId}) async {
+    return _createCheckout(body: {
+      'ppv_event_id': eventId,
+      'origin_url': ApiConstants.backendBaseUrl,
+    }, pending: {
+      'kind': 'ppv',
+      'event_id': eventId,
+    });
+  }
+
+  Future<StripeCheckout?> _createCheckout({
+    required Map<String, String> body,
+    required Map<String, String> pending,
+  }) async {
+    try {
+      final url = _backendUri.replace(path: '/api/stripe/checkout');
+      final r = await http
+          .post(url,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(body))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      final json = jsonDecode(r.body) as Map<String, dynamic>;
+      final sessionId = json['session_id'] as String;
+      final checkoutUrl = json['url'] as String;
+      final amount = (json['amount'] as num).toDouble();
+
+      // Remember what's being paid so we can confirm on return
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pendingSessionKey, sessionId);
+      await prefs.setString(_pendingKindKey, pending['kind']!);
+      if (pending['plan'] != null) await prefs.setString(_pendingPlanKey, pending['plan']!);
+      if (pending['event_id'] != null) await prefs.setString(_pendingEventKey, pending['event_id']!);
+
+      return StripeCheckout(sessionId: sessionId, url: checkoutUrl, amountUsd: amount);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Ouvre l'URL de checkout Stripe dans le navigateur externe de l'appareil.
+  Future<bool> openStripeCheckout(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return true;
+    }
+    return false;
+  }
+
+  /// Appelé après le retour de l'utilisateur depuis Stripe. Interroge le
+  /// backend pour vérifier que le paiement est "paid", puis active localement
+  /// l'abonnement / l'accès PPV.
+  Future<PaymentResult> confirmStripePayment() async {
+    final prefs = await SharedPreferences.getInstance();
+    final sessionId = prefs.getString(_pendingSessionKey);
+    final kind = prefs.getString(_pendingKindKey);
+    if (sessionId == null || kind == null) {
+      return const PaymentResult(
+        isSuccess: false,
+        isPending: false,
+        message: 'Aucun paiement Stripe en attente.',
+        amountFc: 0,
+      );
+    }
+
+    // Poll up to 5 times over ~10s to allow Stripe to settle
+    Map<String, dynamic>? status;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      status = await _fetchStripeStatus(sessionId);
+      if (status != null && status['payment_status'] == 'paid') break;
+      if (status != null && status['status'] == 'expired') break;
+      await Future.delayed(const Duration(seconds: 2));
+    }
+
+    if (status == null) {
+      return const PaymentResult(
+        isSuccess: false, isPending: false,
+        message: 'Impossible de vérifier le paiement. Vérifiez votre connexion.',
+        amountFc: 0,
+      );
+    }
+
+    if (status['payment_status'] != 'paid') {
+      return PaymentResult(
+        isSuccess: false, isPending: false,
+        message: status['status'] == 'expired'
+            ? 'Session Stripe expirée. Relancez le paiement.'
+            : 'Paiement non encore confirmé. Réessayez dans quelques secondes.',
+        amountFc: 0,
+      );
+    }
+
+    // Payment confirmed — activate
+    final cents = (status['amount_total'] as num).toInt();
+    final amountUsd = cents / 100;
+    final amountFc = usdToFc(amountUsd);
+
+    if (kind == 'subscription') {
+      final planName = prefs.getString(_pendingPlanKey);
+      final plan = SubscriptionType.values.firstWhere(
+        (e) => e.name == planName,
+        orElse: () => SubscriptionType.monthly,
+      );
+      await _activateSubscription(plan);
+    } else if (kind == 'ppv') {
+      final eventId = prefs.getString(_pendingEventKey);
+      if (eventId != null) await confirmEventAccess(eventId);
+    }
+
+    // Cleanup
+    await prefs.remove(_pendingSessionKey);
+    await prefs.remove(_pendingKindKey);
+    await prefs.remove(_pendingPlanKey);
+    await prefs.remove(_pendingEventKey);
+
     return PaymentResult(
       isSuccess: true,
       isPending: false,
-      transactionCode: code,
-      message: 'Paiement PayPal confirmé ! Abonnement activé.',
-      amountFc: usdToFc(amountUsd),
+      transactionCode: 'SP$sessionId',
+      message: 'Paiement Stripe confirmé ! Accès activé.',
+      amountFc: amountFc,
     );
+  }
+
+  Future<Map<String, dynamic>?> _fetchStripeStatus(String sessionId) async {
+    try {
+      final url = _backendUri.replace(path: '/api/stripe/status/$sessionId');
+      final r = await http.get(url).timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── PPV Events ─────────────────────────────────────────────────────────────
@@ -194,13 +316,20 @@ class PaymentService {
     required PaymentMethod method,
     required String phoneNumber,
   }) async {
-    if (method == PaymentMethod.paypal) {
-      final usd = priceFc / 2850;
-      await openPayPal(amountUsd: usd);
+    if (method == PaymentMethod.stripe) {
+      final checkout = await createStripePpvCheckout(eventId: eventId);
+      if (checkout == null) {
+        return PaymentResult(
+          isSuccess: false, isPending: false,
+          message: 'Erreur lors de la création de la session Stripe.',
+          amountFc: priceFc,
+        );
+      }
+      await openStripeCheckout(checkout.url);
       return PaymentResult(
         isSuccess: false,
         isPending: true,
-        message: 'Complétez le paiement PayPal, puis confirmez ici.',
+        message: 'Complétez le paiement Stripe, puis confirmez ici.',
         amountFc: priceFc,
       );
     }
@@ -242,5 +371,17 @@ class PaymentResult {
     required this.message,
     this.transactionCode,
     required this.amountFc,
+  });
+}
+
+class StripeCheckout {
+  final String sessionId;
+  final String url;
+  final double amountUsd;
+
+  const StripeCheckout({
+    required this.sessionId,
+    required this.url,
+    required this.amountUsd,
   });
 }

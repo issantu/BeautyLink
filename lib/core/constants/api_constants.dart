@@ -57,4 +57,15 @@ class ApiConstants {
   // Playlist abonné (priorité maximale)
   static const String subscribedM3uUrl =
       'http://amorym.cc/get.php?username=84862wxx0205&password=dyJGST1&type=m3u_plus&output=ts';
+
+  // ---- OmniFlix Backend (Stripe Checkout) ----
+  //
+  // URL publique du backend FastAPI qui gère les paiements Stripe pour les
+  // utilisateurs internationaux. Peut être surchargée à la compilation :
+  //   flutter build apk --dart-define=BACKEND_URL=https://api.omniflix.com
+  static const String backendBaseUrl = String.fromEnvironment(
+    'BACKEND_URL',
+    defaultValue:
+        'https://068d0932-bc0c-4c4f-8660-8055e3ce21b3.preview.emergentagent.com',
+  );
 }

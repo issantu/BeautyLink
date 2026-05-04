@@ -21,10 +21,10 @@ class AppConstants {
   // Code USSD Vodacom DRC pour paiement marchand : *150*1*[montant]*[marchand]#
   static const String mpesaUssdTemplate   = '*150*1*{amount}*839495208#';
 
-  // ── PayPal — international ─────────────────────────────────────────────────
-  // Remplacer par le lien PayPal.me réel après création du compte PayPal Business
-  static const String paypalMeLink        = 'https://www.paypal.me/omniflixapp';
-  static const String paypalBusinessEmail = 'payments@omniflix.app'; // placeholder
+  // ── Stripe — international ────────────────────────────────────────────────
+  // L'intégration Stripe est gérée côté backend (voir /app/backend/server.py
+  // et ApiConstants.backendBaseUrl). Les montants USD sont définis
+  // côté backend dans PACKAGES pour empêcher toute manipulation côté client.
 
   // Savings percentage
   static const double monthlySavings = 0.49; // ~49% cheaper vs daily

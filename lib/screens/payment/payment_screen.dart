@@ -138,49 +138,54 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     }
   }
 
-  // ── International PayPal flow ───────────────────────────────────────────────
+  // ── International Stripe flow ───────────────────────────────────────────────
 
-  Future<void> _openPayPal() async {
+  Future<void> _openStripe() async {
     setState(() { _isLoading = true; _resetResult(); });
     final service = ref.read(paymentServiceProvider);
-    final opened = await service.openPayPal(amountUsd: _amountUsd);
+
+    StripeCheckout? checkout;
+    if (_isPpv) {
+      checkout = await service.createStripePpvCheckout(eventId: widget.ppvEvent!.id);
+    } else {
+      checkout = await service.createStripeCheckout(plan: _selectedPlan);
+    }
+
+    if (!mounted) return;
+    if (checkout == null) {
+      setState(() {
+        _isLoading = false;
+        _resultSuccess = false;
+        _resultMessage = 'Impossible de créer la session Stripe. '
+            'Vérifiez votre connexion et réessayez.';
+      });
+      return;
+    }
+
+    final opened = await service.openStripeCheckout(checkout.url);
     if (!mounted) return;
     setState(() {
       _isLoading = false;
       if (opened) {
         _isPending = true;
-        _resultMessage = 'Finalisez le paiement dans PayPal, '
-            'puis revenez ici et appuyez sur "Confirmer".';
+        _resultMessage = 'Finalisez votre paiement dans Stripe Checkout, '
+            'puis revenez ici et appuyez sur "J\'ai payé — Confirmer".';
       } else {
         _resultSuccess = false;
-        _resultMessage = 'Impossible d\'ouvrir PayPal. Vérifiez votre connexion.';
+        _resultMessage = 'Impossible d\'ouvrir Stripe. Vérifiez votre navigateur.';
       }
     });
   }
 
-  Future<void> _confirmPayPal() async {
+  Future<void> _confirmStripe() async {
     setState(() => _isLoading = true);
     final service = ref.read(paymentServiceProvider);
-
-    PaymentResult result;
-    if (_isPpv) {
-      await service.confirmEventAccess(widget.ppvEvent!.id);
-      result = PaymentResult(
-        isSuccess: true, isPending: false,
-        message: 'Accès PPV confirmé ! Profitez du spectacle.',
-        amountFc: _amountFc,
-      );
-    } else {
-      result = await service.confirmPayPalPayment(
-        plan: _selectedPlan,
-        amountUsd: _amountUsd,
-      );
-    }
+    final result = await service.confirmStripePayment();
 
     if (mounted) {
       setState(() {
         _isLoading = false;
-        _isPending = false;
+        _isPending = !result.isSuccess;
         _resultMessage = result.message;
         _resultSuccess = result.isSuccess;
       });
@@ -235,7 +240,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
               labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               tabs: const [
                 Tab(text: '🇨🇩  RDC — Mobile Money'),
-                Tab(text: '🌍  International — PayPal'),
+                Tab(text: '🌍  International — Stripe'),
               ],
             ),
           ),
@@ -410,17 +415,17 @@ class _IntlTab extends StatelessWidget {
             const SizedBox(height: 20),
           ],
 
-          // PayPal card
+          // Stripe card
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.bgCard,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: const Color(0xFF009CDE).withOpacity(
-                  parent._selectedMethod == PaymentMethod.paypal ? 1 : 0.3,
+                color: const Color(0xFF635BFF).withOpacity(
+                  parent._selectedMethod == PaymentMethod.stripe ? 1 : 0.3,
                 ),
-                width: parent._selectedMethod == PaymentMethod.paypal ? 2 : 1,
+                width: parent._selectedMethod == PaymentMethod.stripe ? 2 : 1,
               ),
             ),
             child: Column(
@@ -431,11 +436,12 @@ class _IntlTab extends StatelessWidget {
                       width: 52,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF009CDE).withOpacity(0.15),
+                        color: const Color(0xFF635BFF).withOpacity(0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Center(
-                        child: Text('🅿', style: TextStyle(fontSize: 28)),
+                        child: Icon(Icons.credit_card_rounded,
+                            color: Color(0xFF635BFF), size: 26),
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -443,11 +449,11 @@ class _IntlTab extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('PayPal',
+                          Text('Stripe Checkout',
                               style: TextStyle(
                                   fontSize: 16, fontWeight: FontWeight.w700,
                                   color: AppColors.textPrimary)),
-                          Text('Carte bancaire, compte PayPal, SEPA',
+                          Text('Visa, Mastercard, Amex, Apple/Google Pay',
                               style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
                         ],
                       ),
@@ -455,12 +461,12 @@ class _IntlTab extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF009CDE).withOpacity(0.1),
+                        color: const Color(0xFF635BFF).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: const Text('Recommandé',
                           style: TextStyle(
-                              fontSize: 9, color: Color(0xFF009CDE),
+                              fontSize: 9, color: Color(0xFF635BFF),
                               fontWeight: FontWeight.w700)),
                     ),
                   ],
@@ -471,12 +477,12 @@ class _IntlTab extends StatelessWidget {
                 const SizedBox(height: 10),
 
                 Row(
-                  children: [
-                    _IntlBadge(text: '🔒 SSL sécurisé'),
-                    const SizedBox(width: 8),
-                    _IntlBadge(text: '🌍 200+ pays'),
-                    const SizedBox(width: 8),
-                    _IntlBadge(text: '💳 Visa/MC'),
+                  children: const [
+                    _IntlBadge(text: '🔒 PCI-DSS Level 1'),
+                    SizedBox(width: 8),
+                    _IntlBadge(text: '🌍 135+ devises'),
+                    SizedBox(width: 8),
+                    _IntlBadge(text: '💳 3D Secure'),
                   ],
                 ),
 
@@ -522,28 +528,28 @@ class _IntlTab extends StatelessWidget {
 
           if (parent._isPending) ...[
             _ActionButton(
-              label: 'J\'ai payé sur PayPal — Confirmer',
+              label: 'J\'ai payé sur Stripe — Confirmer',
               icon: Icons.check_circle_rounded,
               color: AppColors.live,
               isLoading: parent._isLoading,
-              onPressed: parent._confirmPayPal,
+              onPressed: parent._confirmStripe,
             ),
           ] else ...[
             _ActionButton(
-              label: 'Payer avec PayPal',
+              label: 'Payer avec Stripe',
               icon: Icons.open_in_new_rounded,
-              color: const Color(0xFF009CDE),
+              color: const Color(0xFF635BFF),
               isLoading: parent._isLoading,
               onPressed: () {
-                parent.update(() => parent._selectedMethod = PaymentMethod.paypal);
-                parent._openPayPal();
+                parent.update(() => parent._selectedMethod = PaymentMethod.stripe);
+                parent._openStripe();
               },
             ),
           ],
 
           const SizedBox(height: 12),
           const _SecureNote(
-            text: 'Vous serez redirigé vers PayPal.com pour finaliser.\n'
+            text: 'Paiement sécurisé par Stripe (PCI-DSS Level 1).\n'
                 'Votre abonnement est activé après confirmation.',
           ),
           const SizedBox(height: 40),
