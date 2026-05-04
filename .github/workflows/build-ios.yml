@@ -1,0 +1,90 @@
+name: Build OmniFlix iOS (.app simulator + IPA non signe)
+
+on:
+  push:
+    branches:
+      - main
+      - claude/**
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build iOS (no codesign)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Regenerate native platform scaffolding
+        # Adds missing iOS files (Runner.xcodeproj, AppDelegate.swift, Podfile,
+        # Storyboards, Assets.xcassets, etc.) without overwriting our custom
+        # Info.plist or lib/.
+        run: |
+          flutter create . \
+            --platforms=ios,android \
+            --org com.omniflix \
+            --project-name omniflix \
+            --description "OmniFlix - Hub de divertissement"
+
+      - name: Remove stale lockfile
+        run: rm -f pubspec.lock
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Pod install
+        working-directory: ios
+        run: |
+          pod repo update
+          pod install --repo-update
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --debug --no-codesign --no-tree-shake-icons
+
+      - name: Create unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -r OmniFlix-unsigned.ipa Payload
+          ls -la OmniFlix-unsigned.ipa
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: omniflix-ios-app-${{ github.run_number }}
+          path: build/ios/iphoneos/Runner.app
+          retention-days: 14
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: omniflix-ios-unsigned-${{ github.run_number }}
+          path: OmniFlix-unsigned.ipa
+          retention-days: 14
+
+      - name: Build summary
+        if: always()
+        run: |
+          if [ -d build/ios/iphoneos/Runner.app ]; then
+            APP_SIZE=$(du -sh build/ios/iphoneos/Runner.app | cut -f1)
+            echo "## Build iOS reussi" >> $GITHUB_STEP_SUMMARY
+            echo "**App:** Runner.app ($APP_SIZE)" >> $GITHUB_STEP_SUMMARY
+            echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Note:** L'IPA est non signe. Pour deployer sur un iPhone:" >> $GITHUB_STEP_SUMMARY
+            echo "- Utilisez **AltStore**, **Sideloadly** ou **TrollStore**" >> $GITHUB_STEP_SUMMARY
+            echo "- Ou ouvrez \`ios/Runner.xcworkspace\` dans Xcode pour signer avec votre Apple ID" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Build iOS echoue" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -3,7 +3,7 @@ import '../models/event.dart';
 import '../models/subscription.dart';
 import '../services/payment_service.dart';
 
-final paymentServiceProvider = Provider<PaymentService>((ref) => PaymentService());
+// paymentServiceProvider is defined in services/payment_service.dart
 
 // All events (from curated list + any remotely fetched)
 final eventsProvider = Provider<List<LiveEvent>>((ref) {
