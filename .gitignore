@@ -56,3 +56,12 @@ lib/core/constants/api_keys.dart
 *.tmp
 .DS_Store
 Thumbs.db
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
