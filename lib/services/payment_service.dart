@@ -70,6 +70,133 @@ class PaymentService {
   // Flux 100 % client, pas de backend. Inchangé.
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /// Initie un STK Push via le backend OmniFlix. L'utilisateur reçoit une
+  /// notification PIN sur son téléphone et confirme directement. L'app poll
+  /// ensuite le status pour activer automatiquement l'abonnement.
+  ///
+  /// Retourne la [reference] à utiliser avec [pollMobileMoneyPayment].
+  Future<MobileMoneyInitResult?> initiateStkPush({
+    required PaymentMethod operator,
+    required String phone,
+    required SubscriptionType plan,
+  }) {
+    return _initiateStkPush(
+      operator: operator,
+      phone: phone,
+      body: {
+        'operator': operator.name,
+        'phone': phone,
+        'package_id': plan == SubscriptionType.daily ? 'daily_sub' : 'monthly_sub',
+      },
+    );
+  }
+
+  Future<MobileMoneyInitResult?> initiateStkPushPpv({
+    required PaymentMethod operator,
+    required String phone,
+    required String eventId,
+  }) {
+    return _initiateStkPush(
+      operator: operator,
+      phone: phone,
+      body: {
+        'operator': operator.name,
+        'phone': phone,
+        'ppv_event_id': eventId,
+      },
+    );
+  }
+
+  Future<MobileMoneyInitResult?> _initiateStkPush({
+    required PaymentMethod operator,
+    required String phone,
+    required Map<String, String> body,
+  }) async {
+    if (operator == PaymentMethod.stripe) return null;
+    try {
+      final url = _backendUri.replace(path: '/api/mobile_money/initiate');
+      final r = await http
+          .post(url,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(body))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      final json = jsonDecode(r.body) as Map<String, dynamic>;
+      return MobileMoneyInitResult(
+        reference: json['reference'] as String,
+        amountFc: (json['amount_fc'] as num).toInt(),
+        message: json['message'] as String,
+        isSandbox: json['sandbox'] as bool? ?? false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Poll le status toutes les 2s pendant 60s max. Active automatiquement
+  /// l'abonnement / PPV dès que `completed`.
+  Stream<PaymentResult> pollMobileMoneyPayment(String reference) async* {
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    while (DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(seconds: 2));
+      final status = await _fetchMmStatus(reference);
+      if (status == null) continue;
+
+      final state = status['status'] as String;
+      final amountFc = (status['amount_fc'] as num).toInt();
+
+      if (state == 'completed') {
+        final plan = status['subscription_plan'] as String?;
+        final eventId = status['event_id'] as String?;
+        if (plan != null) {
+          await _activateSubscription(
+            plan == 'daily' ? SubscriptionType.daily : SubscriptionType.monthly,
+          );
+        } else if (eventId != null) {
+          await confirmEventAccess(eventId);
+        }
+        yield PaymentResult(
+          isSuccess: true, isPending: false,
+          transactionCode: reference,
+          message: 'Paiement confirmé ! Accès activé.',
+          amountFc: amountFc,
+        );
+        return;
+      }
+      if (state == 'failed') {
+        yield PaymentResult(
+          isSuccess: false, isPending: false,
+          message: 'Paiement échoué ou annulé sur le téléphone.',
+          amountFc: amountFc,
+        );
+        return;
+      }
+      yield PaymentResult(
+        isSuccess: false, isPending: true,
+        message: 'En attente de confirmation sur votre téléphone…',
+        amountFc: amountFc,
+      );
+    }
+    yield const PaymentResult(
+      isSuccess: false, isPending: false,
+      message: 'Temps écoulé. Essayez en USSD ou vérifiez votre téléphone.',
+      amountFc: 0,
+    );
+  }
+
+  Future<Map<String, dynamic>?> _fetchMmStatus(String reference) async {
+    try {
+      final url = _backendUri.replace(path: '/api/mobile_money/status/$reference');
+      final r = await http.get(url).timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── USSD fallback (garde l'ancien flux composeur manuel) ──────────────────
+
   /// Vodacom DRC USSD : *150*1*[montant]*[marchand]#
   String getMpesaUssdCode(int amountFc) {
     return AppConstants.mpesaUssdTemplate
@@ -383,5 +510,19 @@ class StripeCheckout {
     required this.sessionId,
     required this.url,
     required this.amountUsd,
+  });
+}
+
+class MobileMoneyInitResult {
+  final String reference;
+  final int amountFc;
+  final String message;
+  final bool isSandbox;
+
+  const MobileMoneyInitResult({
+    required this.reference,
+    required this.amountFc,
+    required this.message,
+    required this.isSandbox,
   });
 }

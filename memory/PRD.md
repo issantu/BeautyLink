@@ -59,46 +59,53 @@
 - Installation Flutter SDK 3.24.5 dans `/opt/flutter`
 - Upgrade `carousel_slider` 4.2.1 → 5.0.0 (conflit Flutter 3.24 `CarouselController`)
 - `flutter build web --release` → 26 MB bundle servi via `python3 -m http.server 3000`
-- Preview fonctionnelle : splash, onboarding, home (TMDb+IPTV+events),
-  films, séries, paiement RDC avec 46 000 FC / 3 000 FC affichés correctement
 
-### Session 3 — Remplacement PayPal → Stripe (done)
-- **Côté RDC (inchangé)** : composeur USSD en FC conservé intact
-  - `*150*1*{montant}*839495208#` (M-Pesa)
-  - `*185*2*1*839495208*{montant}#` (Airtel)
-  - `#144*1*839495208*{montant}#` (Orange)
-  - `*210*2*839495208*{montant}#` (Africell)
-- **Backend FastAPI** créé à `/app/backend/server.py` :
-  - `POST /api/stripe/checkout` : crée session Stripe pour abonnement
-    (daily_sub $1.99 / monthly_sub $14.99) ou PPV event (prix fixes côté
-    serveur pour éviter la manipulation frontend)
-  - `GET /api/stripe/status/{session_id}` : polling pour vérifier le paiement
-  - `POST /api/webhook/stripe` : webhook officiel Stripe
-  - Pages HTML `/payment-success.html` et `/payment-cancel.html`
-  - MongoDB collection `payment_transactions` créée avec tracking complet
-- **Flutter** mis à jour :
-  - `PaymentMethod.paypal` → `PaymentMethod.stripe`
-  - `PaymentService.openPayPal()` + `confirmPayPalPayment()` → remplacé par
-    `createStripeCheckout()` + `openStripeCheckout()` + `confirmStripePayment()`
-    (poll jusqu'à 5× le backend)
-  - `ApiConstants.backendBaseUrl` configurable via `--dart-define=BACKEND_URL=...`
-  - Carte UI "PayPal" → "Stripe Checkout" (logo carte, PCI-DSS, 135+ devises,
-    3D Secure)
-  - Onglet "International — PayPal" → "International — Stripe"
-- **Sécurité** : montants définis côté backend uniquement (PACKAGES +
-  PPV_PRICES), jamais reçus du frontend → anti-manipulation
+### Session 3 — Remplacement PayPal → Stripe International (done)
+- Backend FastAPI créé : Stripe Checkout avec polling status
+- Flutter `PaymentService` mis à jour : `PaymentMethod.stripe` remplace `paypal`
+- UI : onglet "International — Stripe" avec carte Stripe Checkout
+
+### Session 4 — API Mobile Money RDC avec STK Push auto-confirm (done)
+**Backend** :
+- Nouveau fichier `/app/backend/mobile_money.py` avec 4 adaptateurs :
+  - `VodacomMpesaAdapter` (M-Pesa DRC via openapi.m-pesa.com)
+  - `AirtelMoneyAdapter` (Airtel Africa API, country=CD, currency=CDF)
+  - `OrangeMoneyAdapter` (Orange Developer Web Payment)
+  - `AfricellMoneyAdapter` (API publique sur demande)
+- Mode **sandbox par défaut** (`MOBILE_MONEY_MODE=sandbox`) : simule STK Push
+  avec auto-confirm en 3s, 90 % de réussite
+- Mode **live** : credentials à brancher dans `/app/backend/.env`, TODO
+  marqués dans le code pour l'implémentation réelle de chaque opérateur
+- Nouveaux endpoints :
+  - `POST /api/mobile_money/initiate` — déclenche un STK Push
+  - `GET /api/mobile_money/status/{reference}` — poll le status
+  - `POST /api/mobile_money/webhook/{operator}` — callback opérateur
+- MongoDB collection `mobile_money_transactions` avec tracking complet
+- Prix FC définis côté serveur (anti-manipulation client)
+
+**Flutter** :
+- `PaymentService.initiateStkPush()` / `initiateStkPushPpv()`
+- `PaymentService.pollMobileMoneyPayment()` — Stream poll 2s/60s max
+- `_StkPendingBox` widget : spinner + badge SANDBOX dynamique
+- UI payment_screen :
+  - CTA principal : "Payer X FC" → STK Push auto
+  - Pendant l'attente : spinner "En attente de votre PIN sur le téléphone…"
+  - Auto-success → Navigator.pop
+  - **Fallback USSD** : bouton "Ça ne marche pas ? Composer manuellement (USSD)"
+    → garde l'ancien composeur USSD intact
+- Normalisation téléphone automatique côté backend
+  (`812345678` → `243812345678`)
 
 ## Validation end-to-end (testée en web preview)
-- ✅ Onglet RDC affiche **3 000 FC / 46 000 FC** + 4 Mobile Money providers
-- ✅ Onglet Stripe affiche **$1.99 / $14.99 USD** + carte Stripe Checkout
-- ✅ Clic sur "Payer avec Stripe" → backend crée session →
-  `cs_test_a1hpc2nv3VCR0Ix8slwmgOnfzH94CTlQ6Ysddh1PLHRVSxmdhwJxuR3WgF` →
-  ouverture de `checkout.stripe.com` dans nouvel onglet
-- ✅ MongoDB `payment_transactions` contient l'entrée avec `payment_status:
-  initiated`, `amount: 14.99`, `metadata: {kind: subscription, plan: monthly}`
-- ✅ Backend `/api/health` retourne `{ok: true}`
-- ⚠️ **Android/iOS réel non testé** (environnement Emergent n'a pas
-  d'émulateur). La validation finale passe par les GitHub Actions.
+- ✅ Les 2 onglets RDC/Stripe affichent les bons montants (FC / USD)
+- ✅ **STK Push en sandbox** : transaction `OMX-042DCB6EA368` créée →
+  auto-confirm en 4s (3s sandbox + 2s polling) → subscription `monthly`
+  activée localement → Navigator.pop
+- ✅ **Stripe Checkout** : clic → session `cs_test_...` créée →
+  redirection `checkout.stripe.com`
+- ✅ MongoDB trace les 2 types de transactions avec metadata
+- ✅ Backend `/api/health` OK
+- ⚠️ Android/iOS réel non testé (env Emergent sans émulateur)
 
 ## Next Action Items
 - **P0** : Pousser sur GitHub et lancer **Build OmniFlix APK (Android)** +

@@ -21,6 +21,8 @@ from emergentintegrations.payments.stripe.checkout import (
     CheckoutSessionRequest,
 )
 
+from mobile_money import ADAPTERS, IS_SANDBOX, get_adapter
+
 load_dotenv()
 
 MONGO_URL = os.environ.get("MONGO_URL")
@@ -58,6 +60,20 @@ app.add_middleware(
 mongo_client = AsyncIOMotorClient(MONGO_URL)
 db = mongo_client[DB_NAME]
 tx_col = db.payment_transactions
+mm_col = db.mobile_money_transactions
+
+# Prix FC (miroir de lib/core/constants/app_constants.dart)
+DAILY_PRICE_FC   = 3000
+MONTHLY_PRICE_FC = 46000
+
+PPV_PRICES_FC: dict[str, int] = {
+    "evt_001": 2000,
+    "evt_002": 3000,
+    "evt_003": 5000,
+    "evt_004": 4000,
+    "evt_005": 0,
+    "evt_006": 1500,
+}
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
@@ -82,6 +98,34 @@ class StatusResponse(BaseModel):
     amount_total: int
     currency: str
     already_processed: bool = False
+
+
+# ── Mobile Money RDC models ─────────────────────────────────────────────────
+
+class MmInitiateBody(BaseModel):
+    operator: str = Field(..., description="mpesa | airtel | orange | africell")
+    phone: str = Field(..., min_length=9, description="Numéro sans indicatif ou avec 243…")
+    package_id: Optional[str] = Field(None, description="daily_sub | monthly_sub")
+    ppv_event_id: Optional[str] = None
+
+
+class MmInitiateResponse(BaseModel):
+    reference: str
+    operator: str
+    amount_fc: int
+    status: str
+    message: str
+    sandbox: bool
+
+
+class MmStatusResponse(BaseModel):
+    reference: str
+    status: str                    # pending | completed | failed
+    amount_fc: int
+    operator: str
+    subscription_plan: Optional[str] = None
+    event_id: Optional[str] = None
+    raw: dict = Field(default_factory=dict)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -224,6 +268,158 @@ async def stripe_webhook(request: Request):
             upsert=False,
         )
 
+    return {"received": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Mobile Money RDC (Franc Congolais) — STK Push
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _resolve_mm_amount(body: MmInitiateBody) -> tuple[int, dict]:
+    """Renvoie (amount_fc, metadata) selon le package ou l'event PPV demandé.
+    Les montants viennent de constantes serveur uniquement (anti-manipulation)."""
+    if body.package_id:
+        if body.package_id == "daily_sub":
+            return DAILY_PRICE_FC, {"kind": "subscription", "plan": "daily"}
+        if body.package_id == "monthly_sub":
+            return MONTHLY_PRICE_FC, {"kind": "subscription", "plan": "monthly"}
+        raise HTTPException(400, "Invalid package_id")
+    if body.ppv_event_id:
+        price = PPV_PRICES_FC.get(body.ppv_event_id)
+        if price is None:
+            raise HTTPException(400, "Invalid ppv_event_id")
+        if price <= 0:
+            raise HTTPException(400, "Free event — no payment needed")
+        return price, {"kind": "ppv", "event_id": body.ppv_event_id}
+    raise HTTPException(400, "package_id or ppv_event_id required")
+
+
+def _normalize_phone(phone: str) -> str:
+    """Accepte 08xxxxxxxx, 24308xxxxxxxx, 0024308xxxxxxxx, +24308xxxxxxxx."""
+    p = phone.strip().replace(" ", "").replace("-", "").replace("+", "")
+    if p.startswith("00"):
+        p = p[2:]
+    if p.startswith("0"):
+        p = "243" + p[1:]
+    if not p.startswith("243"):
+        p = "243" + p
+    return p
+
+
+@app.post("/api/mobile_money/initiate", response_model=MmInitiateResponse)
+async def mm_initiate(body: MmInitiateBody):
+    if body.operator.lower() not in ADAPTERS:
+        raise HTTPException(400, f"Unknown operator: {body.operator}")
+
+    amount_fc, metadata = _resolve_mm_amount(body)
+    phone = _normalize_phone(body.phone)
+    reference = f"OMX-{uuid.uuid4().hex[:12].upper()}"
+    adapter = get_adapter(body.operator)
+
+    try:
+        res = await adapter.initiate(phone=phone, amount_fc=amount_fc, reference=reference)
+    except NotImplementedError as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Operator error: {e}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await mm_col.insert_one({
+        "_id": str(uuid.uuid4()),
+        "reference": reference,
+        "operator_reference": res.get("operator_reference"),
+        "operator": body.operator.lower(),
+        "phone": phone,
+        "amount_fc": amount_fc,
+        "metadata": metadata,
+        "status": "pending",
+        "raw_initiate": res,
+        "created_at": now,
+        "updated_at": now,
+    })
+
+    return MmInitiateResponse(
+        reference=reference,
+        operator=body.operator.lower(),
+        amount_fc=amount_fc,
+        status="pending",
+        message=res.get("message", "STK Push envoyé. Vérifiez votre téléphone."),
+        sandbox=IS_SANDBOX,
+    )
+
+
+@app.get("/api/mobile_money/status/{reference}", response_model=MmStatusResponse)
+async def mm_status(reference: str):
+    doc = await mm_col.find_one({"reference": reference}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Unknown reference")
+
+    # Si déjà finalisée, on ne re-poll pas l'opérateur
+    if doc["status"] in ("completed", "failed"):
+        return MmStatusResponse(
+            reference=reference, status=doc["status"],
+            amount_fc=doc["amount_fc"], operator=doc["operator"],
+            subscription_plan=doc.get("metadata", {}).get("plan"),
+            event_id=doc.get("metadata", {}).get("event_id"),
+            raw={"cached": True},
+        )
+
+    adapter = get_adapter(doc["operator"])
+    try:
+        res = await adapter.status(doc["operator_reference"])
+    except NotImplementedError:
+        res = {"status": "pending", "raw": {"note": "live status check unimplemented"}}
+    except Exception as e:
+        res = {"status": "pending", "raw": {"error": str(e)}}
+
+    new_status = res["status"]
+    if new_status != doc["status"]:
+        await mm_col.update_one(
+            {"reference": reference},
+            {"$set": {
+                "status": new_status,
+                "raw_status": res.get("raw", {}),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+
+    return MmStatusResponse(
+        reference=reference,
+        status=new_status,
+        amount_fc=doc["amount_fc"],
+        operator=doc["operator"],
+        subscription_plan=doc.get("metadata", {}).get("plan"),
+        event_id=doc.get("metadata", {}).get("event_id"),
+        raw=res.get("raw", {}),
+    )
+
+
+@app.post("/api/mobile_money/webhook/{operator}")
+async def mm_webhook(operator: str, request: Request):
+    """Callback générique appelé par les opérateurs quand le paiement est confirmé.
+    Chaque opérateur a son propre format ; on stocke le payload brut et on
+    update le status si on reconnaît le reference. À compléter par opérateur
+    en mode live."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {"raw_body": (await request.body()).decode(errors="ignore")}
+
+    ref = (
+        payload.get("reference")
+        or payload.get("transaction", {}).get("id")
+        or payload.get("thirdPartyConversationID")
+    )
+    if ref:
+        await mm_col.update_one(
+            {"reference": ref},
+            {"$set": {
+                "status": "completed",
+                "webhook_payload": payload,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
     return {"received": True}
 
 

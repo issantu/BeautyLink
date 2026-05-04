@@ -30,6 +30,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   String? _resultMessage;
   bool? _resultSuccess;
   String? _ussdCode;
+  String? _stkReference;           // référence retournée par /api/mobile_money/initiate
+  String? _stkInfoMessage;         // "[SANDBOX] M-Pesa STK Push simulé…"
 
   bool get _isPpv => widget.ppvEvent != null;
   bool get _isDrcTab => _regionTab.index == 0;
@@ -71,6 +73,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     _resultSuccess = null;
     _ussdCode = null;
     _isPending = false;
+    _stkReference = null;
+    _stkInfoMessage = null;
   }
 
   // Public rebuild helper — avoids calling the protected setState from sub-widgets.
@@ -79,13 +83,87 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
 
   // ── DRC payment flow ────────────────────────────────────────────────────────
 
-  Future<void> _processMobileMoney() async {
-    if (_selectedMethod == null) {
-      _showSnack('Choisissez un mode de paiement');
+  /// Flow principal : STK Push. Envoie une notification sur le téléphone de
+  /// l'utilisateur, puis poll le backend toutes les 2s jusqu'à confirmation.
+  Future<void> _processStkPush() async {
+    if (_selectedMethod == null || _selectedMethod == PaymentMethod.stripe) {
+      _showSnack('Choisissez un opérateur Mobile Money');
       return;
     }
     if (_phoneController.text.length < 8) {
       _showSnack('Entrez votre numéro de téléphone');
+      return;
+    }
+    setState(() { _isLoading = true; _resetResult(); });
+
+    final service = ref.read(paymentServiceProvider);
+    MobileMoneyInitResult? init;
+    if (_isPpv) {
+      init = await service.initiateStkPushPpv(
+        operator: _selectedMethod!,
+        phone: _phoneController.text,
+        eventId: widget.ppvEvent!.id,
+      );
+    } else {
+      init = await service.initiateStkPush(
+        operator: _selectedMethod!,
+        phone: _phoneController.text,
+        plan: _selectedPlan,
+      );
+    }
+
+    if (!mounted) return;
+    if (init == null) {
+      setState(() {
+        _isLoading = false;
+        _resultSuccess = false;
+        _resultMessage = 'Impossible de contacter notre serveur de paiement.\n'
+            'Vous pouvez utiliser le composeur USSD ci-dessous en fallback.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = false;
+      _isPending = true;
+      _stkReference = init!.reference;
+      _stkInfoMessage = init.message;
+      _resultMessage = 'Pop-up envoyée sur votre téléphone. '
+          'Entrez votre PIN Mobile Money pour confirmer.';
+    });
+
+    // Poll the backend every 2s for up to 60s
+    await for (final result in service.pollMobileMoneyPayment(init.reference)) {
+      if (!mounted) return;
+      if (result.isSuccess) {
+        setState(() {
+          _isPending = false;
+          _resultSuccess = true;
+          _resultMessage = result.message;
+        });
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) Navigator.pop(context, true);
+        return;
+      }
+      if (!result.isPending) {
+        // Failed
+        setState(() {
+          _isPending = false;
+          _resultSuccess = false;
+          _resultMessage = result.message;
+        });
+        return;
+      }
+      // Still pending — keep the loader visible
+      setState(() => _resultMessage = result.message);
+    }
+  }
+
+  /// Fallback USSD manuel (si le backend ne répond pas ou si l'utilisateur
+  /// préfère le composeur traditionnel).
+  Future<void> _processUssdFallback() async {
+    if (_selectedMethod == null || _selectedMethod == PaymentMethod.stripe) {
+      _showSnack('Choisissez un opérateur Mobile Money');
       return;
     }
     setState(() { _isLoading = true; _resetResult(); });
@@ -100,7 +178,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       _resultMessage = 'Composez ce code sur votre téléphone et confirmez avec votre PIN.';
     });
 
-    // Immediately open the dialer
     await service.dialUssd(_selectedMethod!, _amountFc);
   }
 
@@ -341,7 +418,16 @@ class _DrcTab extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // USSD code box (shown when pending)
+          // STK Push loader / pending state (when no USSD code shown)
+          if (parent._isPending && parent._ussdCode == null) ...[
+            _StkPendingBox(
+              operator: parent._selectedMethod!,
+              info: parent._stkInfoMessage,
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // USSD code box (shown in fallback mode when pending)
           if (parent._isPending && parent._ussdCode != null) ...[
             _UssdCodeBox(
               code: parent._ussdCode!,
@@ -358,8 +444,9 @@ class _DrcTab extends StatelessWidget {
             isSuccess: parent._resultSuccess,
           ),
 
-          // Action button
-          if (parent._isPending) ...[
+          // Primary action
+          if (parent._isPending && parent._ussdCode != null) ...[
+            // USSD fallback mode — manual confirmation
             _ActionButton(
               label: 'J\'ai payé — Confirmer l\'abonnement',
               icon: Icons.check_circle_rounded,
@@ -367,13 +454,36 @@ class _DrcTab extends StatelessWidget {
               isLoading: parent._isLoading,
               onPressed: parent._confirmMobileMoney,
             ),
+          ] else if (parent._isPending) ...[
+            // STK Push waiting — show spinner, no action button
+            _ActionButton(
+              label: 'En attente de votre PIN sur le téléphone…',
+              icon: Icons.hourglass_top_rounded,
+              color: AppColors.primary.withOpacity(0.6),
+              isLoading: true,
+              onPressed: () {},
+            ),
           ] else ...[
+            // Idle — STK Push primary CTA
             _ActionButton(
               label: 'Payer ${Formatters.formatPrice(parent._amountFc)}',
               icon: Icons.send_to_mobile_rounded,
               color: AppColors.primary,
               isLoading: parent._isLoading,
-              onPressed: parent._processMobileMoney,
+              onPressed: parent._processStkPush,
+            ),
+            const SizedBox(height: 10),
+            // Secondary: USSD fallback
+            TextButton.icon(
+              onPressed: parent._processUssdFallback,
+              icon: const Icon(Icons.phone_enabled_rounded,
+                  size: 18, color: AppColors.textMuted),
+              label: const Text(
+                'Ça ne marche pas ? Composer manuellement (USSD)',
+                style: TextStyle(
+                    color: AppColors.textMuted, fontSize: 12,
+                    decoration: TextDecoration.underline),
+              ),
             ),
           ],
 
@@ -782,6 +892,84 @@ class _MobileMoneyCard extends StatelessWidget {
 }
 
 // ── USSD Code Box ──────────────────────────────────────────────────────────────
+
+class _StkPendingBox extends StatelessWidget {
+  final PaymentMethod operator;
+  final String? info;
+  const _StkPendingBox({required this.operator, this.info});
+
+  String get _operatorName {
+    switch (operator) {
+      case PaymentMethod.mpesa:    return 'M-Pesa';
+      case PaymentMethod.airtel:   return 'Airtel Money';
+      case PaymentMethod.orange:   return 'Orange Money';
+      case PaymentMethod.africell: return 'Africell Money';
+      case PaymentMethod.stripe:   return '';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const SizedBox(
+                width: 22, height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5, color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Notification envoyée — $_operatorName',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700,
+                          color: AppColors.primary),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Validez avec votre PIN sur votre téléphone',
+                      style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (info != null && info!.contains('SANDBOX')) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Colors.orange.withOpacity(0.4)),
+              ),
+              child: Text(
+                info!,
+                style: const TextStyle(
+                    fontSize: 10, color: Colors.orange,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class _UssdCodeBox extends StatelessWidget {
   final String code;
