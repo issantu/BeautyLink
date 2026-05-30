@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../models/movie.dart';
 import '../payment/payment_screen.dart';
+import 'vod_player_screen.dart';
 
 class MovieDetailScreen extends ConsumerWidget {
   final Movie movie;
@@ -343,10 +344,30 @@ class _WatchOptionsSheet extends StatelessWidget {
             style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 24),
+
+          // ── IPTV (primary) ─────────────────────────────────────────────
+          _OptionButton(
+            icon: Icons.live_tv_rounded,
+            title: 'Regarder via IPTV',
+            subtitle: 'Flux de votre abonnement amorym.cc',
+            color: AppColors.accent,
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => VodPlayerScreen(searchTitle: movie.title),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+
+          // ── Subscribe ──────────────────────────────────────────────────
           _OptionButton(
             icon: Icons.subscriptions_rounded,
-            title: 'Regarder avec l\'abonnement',
-            subtitle: 'Accès illimité avec votre pass',
+            title: 'S\'abonner',
+            subtitle: 'Accès illimité avec votre pass OmniFlix',
             color: AppColors.primary,
             onTap: () {
               Navigator.pop(context);
@@ -355,14 +376,6 @@ class _WatchOptionsSheet extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => const PaymentScreen()),
               );
             },
-          ),
-          const SizedBox(height: 10),
-          _OptionButton(
-            icon: Icons.cast_rounded,
-            title: 'Diffuser sur TV / Projecteur',
-            subtitle: 'Chromecast, Smart TV',
-            color: AppColors.accent,
-            onTap: () => Navigator.pop(context),
           ),
           const SizedBox(height: 20),
         ],

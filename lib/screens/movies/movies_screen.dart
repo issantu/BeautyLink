@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/movie.dart';
+import '../../models/vod_entry.dart';
 import '../../providers/movies_provider.dart';
 import '../../widgets/movie_card.dart';
 import '../../widgets/section_header.dart';
+import 'vod_player_screen.dart';
 
 class MoviesScreen extends ConsumerWidget {
   const MoviesScreen({super.key});
@@ -37,7 +40,7 @@ class MoviesScreen extends ConsumerWidget {
                       ),
                     ),
                     const Text(
-                      'En français • Sous-titres français',
+                      'TMDb • IPTV Abonné',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
@@ -71,7 +74,7 @@ class MoviesScreen extends ConsumerWidget {
               ),
             ),
 
-            // Type filter (Films / Séries)
+            // Type filter
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -87,9 +90,8 @@ class MoviesScreen extends ConsumerWidget {
                     _TypeChip(
                       label: '🎬 Films',
                       selected: selectedFilter == 'movie',
-                      onTap: () => ref
-                          .read(movieFilterProvider.notifier)
-                          .state = 'movie',
+                      onTap: () =>
+                          ref.read(movieFilterProvider.notifier).state = 'movie',
                     ),
                     const SizedBox(width: 8),
                     _TypeChip(
@@ -103,7 +105,7 @@ class MoviesScreen extends ConsumerWidget {
               ),
             ),
 
-            // Origin filter (Hollywood, Nollywood, etc.)
+            // Origin filter
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 44,
@@ -112,109 +114,152 @@ class MoviesScreen extends ConsumerWidget {
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   children: [
-                    _OriginChip(
-                      label: '🌍 Tous',
-                      originId: 'all',
-                      selected: selectedOrigin == 'all',
-                      onTap: () =>
-                          ref.read(movieOriginProvider.notifier).state = 'all',
-                    ),
-                    _OriginChip(
-                      label: '🇫🇷 Français',
-                      originId: 'french',
-                      selected: selectedOrigin == 'french',
-                      onTap: () => ref
-                          .read(movieOriginProvider.notifier)
-                          .state = 'french',
-                    ),
-                    _OriginChip(
-                      label: '🇺🇸 Hollywood',
-                      originId: 'hollywood',
-                      selected: selectedOrigin == 'hollywood',
-                      onTap: () => ref
-                          .read(movieOriginProvider.notifier)
-                          .state = 'hollywood',
-                    ),
-                    _OriginChip(
-                      label: '🇳🇬 Nollywood',
-                      originId: 'nollywood',
-                      selected: selectedOrigin == 'nollywood',
-                      onTap: () => ref
-                          .read(movieOriginProvider.notifier)
-                          .state = 'nollywood',
-                    ),
-                    _OriginChip(
-                      label: '🇮🇳 Bollywood',
-                      originId: 'bollywood',
-                      selected: selectedOrigin == 'bollywood',
-                      onTap: () => ref
-                          .read(movieOriginProvider.notifier)
-                          .state = 'bollywood',
-                    ),
+                    _OriginChip(label: '🌍 Tous', originId: 'all',
+                        selected: selectedOrigin == 'all',
+                        onTap: () => ref.read(movieOriginProvider.notifier).state = 'all'),
+                    _OriginChip(label: '🇫🇷 Français', originId: 'french',
+                        selected: selectedOrigin == 'french',
+                        onTap: () => ref.read(movieOriginProvider.notifier).state = 'french'),
+                    _OriginChip(label: '🇺🇸 Hollywood', originId: 'hollywood',
+                        selected: selectedOrigin == 'hollywood',
+                        onTap: () => ref.read(movieOriginProvider.notifier).state = 'hollywood'),
+                    _OriginChip(label: '🇳🇬 Nollywood', originId: 'nollywood',
+                        selected: selectedOrigin == 'nollywood',
+                        onTap: () => ref.read(movieOriginProvider.notifier).state = 'nollywood'),
+                    _OriginChip(label: '🇮🇳 Bollywood', originId: 'bollywood',
+                        selected: selectedOrigin == 'bollywood',
+                        onTap: () => ref.read(movieOriginProvider.notifier).state = 'bollywood'),
                   ],
                 ),
               ),
             ),
 
-            // Search results (if searching)
+            // ── Search mode ────────────────────────────────────────────────
             if (searchQuery.isNotEmpty) ...[
+              // TMDb results
               const SliverToBoxAdapter(
                 child: SectionHeader(
-                  title: 'Résultats de recherche',
-                  icon: Icons.search_rounded,
-                ),
+                    title: 'Résultats TMDb', icon: Icons.search_rounded),
               ),
               SliverToBoxAdapter(
                 child: Consumer(builder: (ctx, r, _) {
                   final results = r.watch(movieSearchResultsProvider);
                   return results.when(
-                    data: (movies) => _MovieGrid(movies: _applyFilter(movies, selectedFilter)),
+                    data: (movies) =>
+                        _MovieGrid(movies: _applyFilter(movies, selectedFilter)),
                     loading: () => const _GridSkeleton(),
                     error: (_, __) => const SizedBox.shrink(),
                   );
                 }),
               ),
-            ] else ...[
-              // Now Playing
+
+              // IPTV results
               const SliverToBoxAdapter(
                 child: SectionHeader(
-                  title: 'Au Cinéma',
-                  icon: Icons.local_movies_rounded,
-                  iconColor: AppColors.gold,
-                ),
+                    title: '📡 Résultats IPTV',
+                    icon: Icons.live_tv_rounded,
+                    iconColor: AppColors.accent),
+              ),
+              SliverToBoxAdapter(
+                child: Consumer(builder: (ctx, r, _) {
+                  final results = r.watch(iptvVodSearchProvider);
+                  return results.when(
+                    data: (entries) => entries.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            child: Text('Aucun résultat IPTV',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textSecondary)),
+                          )
+                        : _VodGrid(entries: entries),
+                    loading: () => const _GridSkeleton(),
+                    error: (_, __) => const SizedBox.shrink(),
+                  );
+                }),
+              ),
+
+            // ── Browse mode ────────────────────────────────────────────────
+            ] else ...[
+              // Now Playing (TMDb)
+              const SliverToBoxAdapter(
+                child: SectionHeader(
+                    title: 'Au Cinéma',
+                    icon: Icons.local_movies_rounded,
+                    iconColor: AppColors.gold),
               ),
               SliverToBoxAdapter(
                 child: Consumer(builder: (ctx, r, _) {
                   final movies = r.watch(nowPlayingProvider);
                   return movies.when(
-                    data: (list) => _HorizontalMovies(movies: _applyFilter(list, selectedFilter)),
+                    data: (list) => _HorizontalMovies(
+                        movies: _applyFilter(list, selectedFilter)),
                     loading: () => const _HorizontalSkeleton(),
                     error: (_, __) => const SizedBox.shrink(),
                   );
                 }),
               ),
 
-              // Popular (by origin)
+              // Origin section (TMDb)
               SliverToBoxAdapter(
                 child: _OriginSection(
-                  origin: selectedOrigin,
-                  filter: selectedFilter,
-                ),
+                    origin: selectedOrigin, filter: selectedFilter),
               ),
 
-              // Trending this week
+              // ── IPTV VOD Movies ──────────────────────────────────────────
               const SliverToBoxAdapter(
                 child: SectionHeader(
-                  title: 'Tendances de la Semaine',
-                  icon: Icons.trending_up_rounded,
-                  iconColor: AppColors.primary,
-                ),
+                    title: '📡 Films IPTV',
+                    icon: Icons.live_tv_rounded,
+                    iconColor: AppColors.accent),
+              ),
+              SliverToBoxAdapter(
+                child: Consumer(builder: (ctx, r, _) {
+                  final vod = r.watch(iptvVodMoviesProvider);
+                  return vod.when(
+                    data: (entries) => entries.isEmpty
+                        ? const _IptvUnavailableNote()
+                        : _VodHorizontal(entries: entries.take(20).toList()),
+                    loading: () => const _HorizontalSkeleton(),
+                    error: (_, __) => const _IptvUnavailableNote(),
+                  );
+                }),
+              ),
+
+              // ── IPTV VOD Series ──────────────────────────────────────────
+              const SliverToBoxAdapter(
+                child: SectionHeader(
+                    title: '📺 Séries IPTV',
+                    icon: Icons.theaters_rounded,
+                    iconColor: AppColors.primary),
+              ),
+              SliverToBoxAdapter(
+                child: Consumer(builder: (ctx, r, _) {
+                  final vod = r.watch(iptvVodSeriesProvider);
+                  return vod.when(
+                    data: (entries) => entries.isEmpty
+                        ? const _IptvUnavailableNote()
+                        : _VodHorizontal(entries: entries.take(20).toList()),
+                    loading: () => const _HorizontalSkeleton(),
+                    error: (_, __) => const _IptvUnavailableNote(),
+                  );
+                }),
+              ),
+
+              // Trending (TMDb)
+              const SliverToBoxAdapter(
+                child: SectionHeader(
+                    title: 'Tendances de la Semaine',
+                    icon: Icons.trending_up_rounded,
+                    iconColor: AppColors.primary),
               ),
               SliverToBoxAdapter(
                 child: Consumer(builder: (ctx, r, _) {
                   final trending = r.watch(trendingProvider);
                   return trending.when(
-                    data: (list) => _MovieGrid(movies: _applyFilter(list, selectedFilter)),
+                    data: (list) =>
+                        _MovieGrid(movies: _applyFilter(list, selectedFilter)),
                     loading: () => const _GridSkeleton(),
                     error: (_, __) => const SizedBox.shrink(),
                   );
@@ -235,10 +280,11 @@ class MoviesScreen extends ConsumerWidget {
   }
 }
 
+// ── Origin section (TMDb) ─────────────────────────────────────────────────────
+
 class _OriginSection extends ConsumerWidget {
   final String origin;
   final String filter;
-
   const _OriginSection({required this.origin, required this.filter});
 
   @override
@@ -286,75 +332,144 @@ class _OriginSection extends ConsumerWidget {
   }
 }
 
-class _TypeChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+// ── VOD card ──────────────────────────────────────────────────────────────────
 
-  const _TypeChip(
-      {required this.label, required this.selected, required this.onTap});
+class _VodCard extends StatelessWidget {
+  final VodEntry entry;
+  const _VodCard({required this.entry});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary : AppColors.bgCard,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? Colors.white : AppColors.textSecondary,
-          ),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => VodPlayerScreen(entry: entry)),
+      ),
+      child: SizedBox(
+        width: 120,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    entry.logo != null
+                        ? CachedNetworkImage(
+                            imageUrl: entry.logo!,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) =>
+                                Container(color: AppColors.bgCard),
+                            errorWidget: (_, __, ___) => Container(
+                              color: AppColors.bgCard,
+                              child: const Icon(Icons.movie_rounded,
+                                  color: AppColors.textMuted, size: 32),
+                            ),
+                          )
+                        : Container(
+                            color: AppColors.bgCard,
+                            child: const Icon(Icons.movie_rounded,
+                                color: AppColors.textMuted, size: 32),
+                          ),
+                    // IPTV badge
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withOpacity(0.85),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          entry.isSeries ? 'SÉRIE' : 'FILM',
+                          style: const TextStyle(
+                              fontSize: 8,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                    // Play overlay
+                    const Center(
+                      child: Icon(Icons.play_circle_filled_rounded,
+                          color: Colors.white54, size: 32),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              entry.displayTitle,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textPrimary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              'IPTV',
+              style: TextStyle(
+                  fontSize: 9,
+                  color: AppColors.accent.withOpacity(0.8),
+                  fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _OriginChip extends StatelessWidget {
-  final String label;
-  final String originId;
-  final bool selected;
-  final VoidCallback onTap;
+// ── Layout helpers ────────────────────────────────────────────────────────────
 
-  const _OriginChip({
-    required this.label,
-    required this.originId,
-    required this.selected,
-    required this.onTap,
-  });
+class _VodHorizontal extends StatelessWidget {
+  final List<VodEntry> entries;
+  const _VodHorizontal({required this.entries});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.secondary.withOpacity(0.2) : AppColors.bgCard,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? AppColors.secondary : AppColors.bgCardLight,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? AppColors.secondary : AppColors.textSecondary,
-          ),
+    if (entries.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 200,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: entries.length,
+        itemBuilder: (ctx, i) => Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: _VodCard(entry: entries[i]),
         ),
       ),
+    );
+  }
+}
+
+class _VodGrid extends StatelessWidget {
+  final List<VodEntry> entries;
+  const _VodGrid({required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) return const SizedBox.shrink();
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 0.65,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemCount: entries.length,
+      itemBuilder: (ctx, i) => _VodCard(entry: entries[i]),
     );
   }
 }
@@ -413,6 +528,99 @@ class _MovieGrid extends StatelessWidget {
   }
 }
 
+class _IptvUnavailableNote extends StatelessWidget {
+  const _IptvUnavailableNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Text(
+        'Contenu IPTV indisponible — vérifiez votre connexion.',
+        style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+      ),
+    );
+  }
+}
+
+// ── Filter chips ──────────────────────────────────────────────────────────────
+
+class _TypeChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _TypeChip({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.bgCard,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? Colors.white : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OriginChip extends StatelessWidget {
+  final String label;
+  final String originId;
+  final bool selected;
+  final VoidCallback onTap;
+  const _OriginChip({
+    required this.label,
+    required this.originId,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.secondary.withOpacity(0.2)
+              : AppColors.bgCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color:
+                selected ? AppColors.secondary : AppColors.bgCardLight,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color:
+                selected ? AppColors.secondary : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Skeletons ─────────────────────────────────────────────────────────────────
+
 class _HorizontalSkeleton extends StatelessWidget {
   const _HorizontalSkeleton();
 
@@ -428,9 +636,8 @@ class _HorizontalSkeleton extends StatelessWidget {
           width: 120,
           margin: const EdgeInsets.only(right: 12),
           decoration: BoxDecoration(
-            color: AppColors.bgCard,
-            borderRadius: BorderRadius.circular(12),
-          ),
+              color: AppColors.bgCard,
+              borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );
@@ -455,9 +662,8 @@ class _GridSkeleton extends StatelessWidget {
       itemCount: 9,
       itemBuilder: (_, __) => Container(
         decoration: BoxDecoration(
-          color: AppColors.bgCard,
-          borderRadius: BorderRadius.circular(12),
-        ),
+            color: AppColors.bgCard,
+            borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

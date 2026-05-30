@@ -1,30 +1,44 @@
 import 'package:http/http.dart' as http;
 import '../core/constants/api_constants.dart';
 import '../models/channel.dart';
+import '../models/vod_entry.dart';
 
 class IptvService {
-  // French-related language codes and keywords
   static const _frenchLangs = {'fra', 'fre', 'fr'};
-  static const _frenchCountries = {'FR', 'CD', 'CM', 'SN', 'CI', 'BJ', 'BF',
-      'TG', 'GA', 'CG', 'RW', 'BI', 'MG', 'ML', 'NE', 'TD', 'CF', 'GN',
-      'GQ', 'DJ', 'KM', 'MU', 'SC', 'MR', 'HT'};
+  static const _frenchCountries = {
+    'FR', 'CD', 'CM', 'SN', 'CI', 'BJ', 'BF',
+    'TG', 'GA', 'CG', 'RW', 'BI', 'MG', 'ML', 'NE', 'TD', 'CF', 'GN',
+    'GQ', 'DJ', 'KM', 'MU', 'SC', 'MR', 'HT',
+  };
 
-  // Load channels from a specific M3U playlist URL
-  Future<List<TvChannel>> loadFromM3u(String url) async {
+  // Cache the raw subscribed M3U content to avoid fetching twice
+  Future<String>? _subscribedContentFuture;
+
+  Future<String> _getSubscribedContent() {
+    _subscribedContentFuture ??= _fetchRaw(ApiConstants.subscribedM3uUrl, timeout: 45);
+    return _subscribedContentFuture!;
+  }
+
+  Future<String> _fetchRaw(String url, {int timeout = 30}) async {
+    if (url.isEmpty) return '';
     try {
       final response = await http
-          .get(Uri.parse(url),
-              headers: {'User-Agent': 'OmniFlix/1.0'})
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode != 200) return [];
-      return _parseM3u(response.body);
+          .get(Uri.parse(url), headers: {'User-Agent': 'OmniFlix/1.0'})
+          .timeout(Duration(seconds: timeout));
+      return response.statusCode == 200 ? response.body : '';
     } catch (_) {
-      return [];
+      return '';
     }
   }
 
-  // Load and filter french channels from master playlist
+  // ── Public channel methods ────────────────────────────────────────────────
+
+  Future<List<TvChannel>> loadFromM3u(String url) async {
+    final content = await _fetchRaw(url);
+    if (content.isEmpty) return [];
+    return _parseChannels(content);
+  }
+
   Future<List<TvChannel>> loadFrenchChannels() async {
     final results = await Future.wait([
       loadFromM3u(ApiConstants.frenchM3uUrl),
@@ -39,15 +53,12 @@ class IptvService {
     final channels = <TvChannel>[];
     for (final list in results) {
       for (final ch in list) {
-        if (seen.add(ch.name.toLowerCase())) {
-          channels.add(ch);
-        }
+        if (seen.add(ch.name.toLowerCase())) channels.add(ch);
       }
     }
     return channels;
   }
 
-  // Load channels by category from IPTV-org category playlists
   Future<List<TvChannel>> loadByCategory(String category) async {
     String url;
     switch (category) {
@@ -67,56 +78,80 @@ class IptvService {
       default:
         url = ApiConstants.generalM3uUrl;
     }
-
-    final channels = await loadFromM3u(url);
-    // Prefer french/african channels but include all
-    return _prioritizeFrench(channels);
+    return _prioritizeFrench(await loadFromM3u(url));
   }
 
-  // Load subscribed playlist (highest priority)
   Future<List<TvChannel>> loadSubscribed() async {
-    if (ApiConstants.subscribedM3uUrl.isEmpty) return [];
-    return loadFromM3u(ApiConstants.subscribedM3uUrl);
+    final content = await _getSubscribedContent();
+    if (content.isEmpty) return [];
+    return _parseChannels(content);
   }
 
-  // Get channels: subscribed playlist is the ONLY source (fast).
-  // Falls back to curated list only if subscribed fails.
   Future<List<TvChannel>> getAllChannels({String category = 'all'}) async {
-    // 1. Try subscribed playlist first (stable, VPN-enabled)
     final subscribed = await loadSubscribed();
 
     if (subscribed.isNotEmpty) {
       if (category == 'all') return subscribed;
-      // Filter by category
-      final filtered = subscribed
-          .where((c) => c.category == category)
-          .toList();
-      // If no match in category, return all subscribed channels
+      final filtered = subscribed.where((c) => c.category == category).toList();
       return filtered.isNotEmpty ? filtered : subscribed;
     }
 
-    // 2. Fallback: curated list (instant, no network needed)
     return getCuratedChannels(category);
   }
 
-  // Get curated channels immediately (no async, for home screen)
   List<TvChannel> getCuratedChannels(String category) {
     if (category == 'all') return CuratedChannels.allChannels;
-    return CuratedChannels.allChannels
-        .where((c) => c.category == category)
-        .toList();
+    return CuratedChannels.allChannels.where((c) => c.category == category).toList();
   }
 
-  // Parse M3U playlist text into TvChannel list
-  List<TvChannel> _parseM3u(String content) {
+  // ── VOD methods ───────────────────────────────────────────────────────────
+
+  Future<List<VodEntry>> loadVodMovies() async {
+    final content = await _getSubscribedContent();
+    if (content.isEmpty) return [];
+    return _parseVod(content).where((e) => !e.isSeries).toList();
+  }
+
+  Future<List<VodEntry>> loadVodSeries() async {
+    final content = await _getSubscribedContent();
+    if (content.isEmpty) return [];
+    return _parseVod(content).where((e) => e.isSeries).toList();
+  }
+
+  // Find the best IPTV VOD match for a TMDb movie title
+  static VodEntry? findMatch(List<VodEntry> entries, String title) {
+    final q = _normalize(title);
+    if (q.isEmpty) return null;
+
+    // 1. Exact normalized match
+    for (final e in entries) {
+      if (_normalize(e.title) == q) return e;
+    }
+    // 2. VOD title contains query
+    for (final e in entries) {
+      if (_normalize(e.title).contains(q)) return e;
+    }
+    // 3. Query contains VOD title (short title within longer query)
+    for (final e in entries) {
+      final et = _normalize(e.title);
+      if (et.length > 4 && q.contains(et)) return e;
+    }
+    return null;
+  }
+
+  static String _normalize(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s*[\(\[][^\)\]]*[\)\]]\s*'), ' ')
+      .replaceAll(RegExp(r"[^\w\s']"), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  // ── Parsing ───────────────────────────────────────────────────────────────
+
+  List<TvChannel> _parseChannels(String content) {
     final channels = <TvChannel>[];
     final lines = content.split('\n');
-
-    String? name;
-    String? logo;
-    String? group;
-    String? language;
-    String? country;
+    String? name, logo, group, language, country;
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
@@ -129,35 +164,63 @@ class IptvService {
         group = _attr(line, 'group-title') ?? '';
         language = _attr(line, 'tvg-language') ?? '';
         country = _attr(line, 'tvg-country') ?? '';
-      } else if (line.isNotEmpty &&
-          !line.startsWith('#') &&
-          name != null &&
-          name.isNotEmpty) {
-        channels.add(TvChannel(
-          id: '${name.toLowerCase().replaceAll(' ', '_')}_$i',
-          name: name,
-          logo: logo,
-          streamUrl: line,
-          category: _mapCategory(group ?? '', name),
-          language: language?.toLowerCase() ?? 'fr',
-          country: country?.isNotEmpty == true ? country : null,
-          isLive: true,
-        ));
-        name = null;
-        logo = null;
-        group = null;
-        language = null;
-        country = null;
+      } else if (line.isNotEmpty && !line.startsWith('#') && name != null && name.isNotEmpty) {
+        // Exclude Xtream Codes VOD entries — they live in /movie/ and /series/
+        if (!line.contains('/movie/') && !line.contains('/series/')) {
+          channels.add(TvChannel(
+            id: '${name.toLowerCase().replaceAll(' ', '_')}_$i',
+            name: name,
+            logo: logo,
+            streamUrl: line,
+            category: _mapCategory(group ?? '', name),
+            language: language?.toLowerCase() ?? 'fr',
+            country: country?.isNotEmpty == true ? country : null,
+            isLive: true,
+          ));
+        }
+        name = null; logo = null; group = null; language = null; country = null;
       }
     }
     return channels;
   }
 
-  // Prioritize french/african channels in a list
+  List<VodEntry> _parseVod(String content) {
+    final entries = <VodEntry>[];
+    final lines = content.split('\n');
+    String? name, logo, group;
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+
+      if (line.startsWith('#EXTINF')) {
+        name = _attr(line, 'tvg-name') ??
+            (line.contains(',') ? line.split(',').last.trim() : null);
+        logo = _attr(line, 'tvg-logo');
+        group = _attr(line, 'group-title') ?? '';
+      } else if (line.isNotEmpty && !line.startsWith('#') && name != null && name.isNotEmpty) {
+        final isMovie = line.contains('/movie/');
+        final isSer = line.contains('/series/');
+        if (isMovie || isSer) {
+          entries.add(VodEntry(
+            id: 'vod_${entries.length}',
+            title: name,
+            logo: logo,
+            streamUrl: line,
+            group: group ?? '',
+            isSeries: isSer,
+          ));
+        }
+        name = null; logo = null; group = null;
+      }
+    }
+    return entries;
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
   List<TvChannel> _prioritizeFrench(List<TvChannel> channels) {
     final french = <TvChannel>[];
     final others = <TvChannel>[];
-
     for (final ch in channels) {
       if (_frenchLangs.contains(ch.language.toLowerCase()) ||
           _frenchCountries.contains(ch.country?.toUpperCase())) {
@@ -171,9 +234,9 @@ class IptvService {
 
   String? _attr(String line, String key) {
     final regex = RegExp('$key="([^"]*)"', caseSensitive: false);
-    return regex.firstMatch(line)?.group(1)?.trim().isNotEmpty == true
-        ? regex.firstMatch(line)!.group(1)!.trim()
-        : null;
+    final m = regex.firstMatch(line);
+    final v = m?.group(1)?.trim();
+    return (v != null && v.isNotEmpty) ? v : null;
   }
 
   String _mapCategory(String group, String name) {
