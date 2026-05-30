@@ -10,8 +10,7 @@ build/
 # Android
 android/.gradle
 android/captures/
-android/gradlew
-android/gradlew.bat
+# gradlew and gradle-wrapper.properties ARE committed (needed for CI/CD)
 android/local.properties
 android/key.properties
 android/**/*.iml

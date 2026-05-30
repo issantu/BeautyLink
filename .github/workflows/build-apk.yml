@@ -34,30 +34,44 @@ jobs:
       - name: Flutter doctor
         run: flutter doctor -v
 
-      - name: Regenerate native platform scaffolding
-        # `flutter create .` only adds MISSING platform files (gradle wrapper,
-        # MainActivity, mipmap launcher icons, AppDelegate, Podfile, Runner.xcodeproj…)
-        # without touching customized files like AndroidManifest.xml, Info.plist or lib/.
-        run: |
-          flutter create . \
-            --platforms=android,ios \
-            --org com.omniflix \
-            --project-name omniflix \
-            --description "OmniFlix - Hub de divertissement"
+      # ── Gradle wrapper (gradlew + JAR) ─────────────────────────────────────
+      # The repo ships gradlew and gradle-wrapper.properties but not the JAR
+      # (binary, 60 KB). We download it once and cache it across runs.
+      - name: Cache gradle-wrapper.jar
+        id: cache-wrapper-jar
+        uses: actions/cache@v4
+        with:
+          path: android/gradle/wrapper/gradle-wrapper.jar
+          key: gradle-wrapper-jar-8.3
 
+      - name: Download gradle-wrapper.jar
+        if: steps.cache-wrapper-jar.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar" \
+            -o android/gradle/wrapper/gradle-wrapper.jar
+          echo "Downloaded gradle-wrapper.jar ($(du -sh android/gradle/wrapper/gradle-wrapper.jar | cut -f1))"
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # ── Dependencies ────────────────────────────────────────────────────────
       - name: Remove stale lockfile
         run: rm -f pubspec.lock
 
-      - name: Install dependencies
+      - name: Install Flutter dependencies
         run: flutter pub get
 
+      # ── Analyze ─────────────────────────────────────────────────────────────
       - name: Analyze code
         run: flutter analyze --no-fatal-warnings --no-fatal-infos
         continue-on-error: true
 
+      # ── Build ───────────────────────────────────────────────────────────────
       - name: Build debug APK
         run: flutter build apk --debug --no-tree-shake-icons
 
+      # ── Artifact ────────────────────────────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -70,13 +84,13 @@ jobs:
         run: |
           if [ -f build/app/outputs/flutter-apk/app-debug.apk ]; then
             APK_SIZE=$(du -sh build/app/outputs/flutter-apk/app-debug.apk | cut -f1)
-            echo "## Build APK reussi" >> $GITHUB_STEP_SUMMARY
+            echo "## ✅ Build APK reussi" >> $GITHUB_STEP_SUMMARY
             echo "**APK:** app-debug.apk ($APK_SIZE)" >> $GITHUB_STEP_SUMMARY
             echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
             echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Telechargez l'APK dans l'onglet **Artifacts** ci-dessus." >> $GITHUB_STEP_SUMMARY
           else
-            echo "## Build echoue" >> $GITHUB_STEP_SUMMARY
+            echo "## ❌ Build echoue" >> $GITHUB_STEP_SUMMARY
             echo "Verifiez les logs du job pour identifier le probleme." >> $GITHUB_STEP_SUMMARY
           fi
