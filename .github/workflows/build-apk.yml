@@ -34,44 +34,22 @@ jobs:
       - name: Flutter doctor
         run: flutter doctor -v
 
-      # ── Gradle wrapper (gradlew + JAR) ─────────────────────────────────────
-      # The repo ships gradlew and gradle-wrapper.properties but not the JAR
-      # (binary, 60 KB). We download it once and cache it across runs.
-      - name: Cache gradle-wrapper.jar
-        id: cache-wrapper-jar
-        uses: actions/cache@v4
-        with:
-          path: android/gradle/wrapper/gradle-wrapper.jar
-          key: gradle-wrapper-jar-8.3
-
-      - name: Download gradle-wrapper.jar
-        if: steps.cache-wrapper-jar.outputs.cache-hit != 'true'
-        run: |
-          curl -fsSL \
-            "https://raw.githubusercontent.com/gradle/gradle/v8.3.0/gradle/wrapper/gradle-wrapper.jar" \
-            -o android/gradle/wrapper/gradle-wrapper.jar
-          echo "Downloaded gradle-wrapper.jar ($(du -sh android/gradle/wrapper/gradle-wrapper.jar | cut -f1))"
-
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      # ── Dependencies ────────────────────────────────────────────────────────
       - name: Remove stale lockfile
         run: rm -f pubspec.lock
 
       - name: Install Flutter dependencies
         run: flutter pub get
 
-      # ── Analyze ─────────────────────────────────────────────────────────────
       - name: Analyze code
         run: flutter analyze --no-fatal-warnings --no-fatal-infos
         continue-on-error: true
 
-      # ── Build ───────────────────────────────────────────────────────────────
       - name: Build debug APK
         run: flutter build apk --debug --no-tree-shake-icons
 
-      # ── Artifact ────────────────────────────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
